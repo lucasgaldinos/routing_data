@@ -1,24 +1,24 @@
 # TSPLIB 95
 
-Gerhard Reinelt  
-Universität Heidelberg  
-Institut für Angewandte Mathematik  
-Im Neuenheimer Feld 294  
-D-69120 Heidelberg  
+Gerhard Reinelt
+Universität Heidelberg
+Institut für Angewandte Mathematik
+Im Neuenheimer Feld 294
+D-69120 Heidelberg
 <Gerhard.Reinelt@IWR.Uni-Heidelberg.DE>
 
 TSPLIB is a library of sample instances for the TSP (and related problems) from various sources and of various types. Instances of the following problem classes are available.
 
 - Symmetric traveling salesman problem (TSP)
-  - Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. The distance from node i to node j is the same as from node j to node i.
+  + Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. The distance from node i to node j is the same as from node j to node i.
 - Hamiltonian cycle problem (HCP)
-  - Given a graph, test if the graph contains a Hamiltonian cycle or not.
+  + Given a graph, test if the graph contains a Hamiltonian cycle or not.
 - Asymmetric traveling salesman problem (ATSP)
-  - Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. In this case, the distance from node i to node j and the distance from node j to node i may be different.
+  + Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. In this case, the distance from node i to node j and the distance from node j to node i may be different.
 - Sequential ordering problem (SOP)
-  - This problem is an asymmetric traveling salesman problem with additional constraints. Given a set of n nodes and distances for each pair of nodes, find a Hamiltonian path from node 1 to node n of minimal length which takes given precedence constraints into account. Each precedence constraint requires that some node i has to be visited before some other node j.
+  + This problem is an asymmetric traveling salesman problem with additional constraints. Given a set of n nodes and distances for each pair of nodes, find a Hamiltonian path from node 1 to node n of minimal length which takes given precedence constraints into account. Each precedence constraint requires that some node i has to be visited before some other node j.
 - Capacitated vehicle routing problem (CVRP)
-  - We are given n−1 nodes, one depot and distances from the nodes to the depot, as well as between nodes. All nodes have demands which can be satisfied by the depot. For delivery to the nodes, trucks with identical capacities are available. The problem is to find tours for the trucks of minimal total length that satisfy the node demands without violating truck capacity constraint. The number of trucks is not specified. Each tour visits a subset of the nodes and starts and terminates at the depot. (Remark: In some data files a collection of alternate depots is given. A CVRP is then given by selecting one of these depots.)
+  + We are given n−1 nodes, one depot and distances from the nodes to the depot, as well as between nodes. All nodes have demands which can be satisfied by the depot. For delivery to the nodes, trucks with identical capacities are available. The problem is to find tours for the trucks of minimal total length that satisfy the node demands without violating truck capacity constraint. The number of trucks is not specified. Each tour visits a subset of the nodes and starts and terminates at the depot. (Remark: In some data files a collection of alternate depots is given. A CVRP is then given by selecting one of these depots.)
 
 Except for the Hamiltonian cycle problems, all problems are defined on a complete graph and, at present, all distances are integer numbers. There is a possibility to require that certain edges appear in the solution of a problem.
 
@@ -134,10 +134,13 @@ Depending on the choice of specifications some additional data may be required. 
 Node coordinates are given in this section.
 
 - If `NODE_COORD_TYPE` is `TWOD_COORDS`:
+
   ```
   <integer> <real> <real>
   ```
+
 - If `NODE_COORD_TYPE` is `THREED_COORDS`:
+
   ```
   <integer> <real> <real> <real>
   ```
@@ -163,15 +166,19 @@ The first integer specifies a node number, the second its demand. The depot node
 Edges of a graph are specified in either of the two formats allowed in the `EDGE_DATA_FORMAT` entry.
 
 - If the type is `EDGE_LIST`, then the edges are given as a sequence of lines of the form:
+
   ```
   <integer> <integer>
   ```
+
   Each entry gives the terminal nodes of some edge. The list is terminated by a `-1`.
 
 - If the type is `ADJ_LIST`, the section consists of a list of adjacency lists for nodes. The adjacency list of a node x is specified as:
+
   ```
   <integer> <integer> ... <integer> -1
   ```
+
   where the first integer gives the number of node x and the following integers (terminated by `-1`) the numbers of nodes adjacent to x. The list of adjacency lists is terminated by an additional `-1`.
 
 #### 1.2.5 `FIXED_EDGES_SECTION`
@@ -351,8 +358,8 @@ To verify correctness of the distance function implementations we give the lengt
 - `gr666` — 423 710
 - `att532` — 309 636
 - `xray14012` (problem 8 in [1]):
-  - with `XRAY1` — 15 429 219
-  - with `XRAY2` — 12 943 294
+  + with `XRAY1` — 15 429 219
+  + with `XRAY2` — 12 943 294
 
 ---
 
@@ -694,23 +701,23 @@ pr299      TK299   -            pr439      TK439   -
 pr76       TK076   -            st70       KRO070  70
 ```
 
-3. Some vehicle routing problems are also available in a TSP version. Here the depots are just treated as normal nodes. The problem `gil262` originally contained two identical nodes, of which one was eliminated.
-4. Potential contributors to this library should provide their data files in appropriate format and contact
+1. Some vehicle routing problems are also available in a TSP version. Here the depots are just treated as normal nodes. The problem `gil262` originally contained two identical nodes, of which one was eliminated.
+2. Potential contributors to this library should provide their data files in appropriate format and contact
 
-   Gerhard Reinelt  
-   Institut für Angewandte Mathematik, Universität Heidelberg  
-   Im Neuenheimer Feld 294, D-69120 Heidelberg, Germany  
-   Tel (6221) 56 3171  
-   Fax (6221) 56 5634  
+   Gerhard Reinelt
+   Institut für Angewandte Mathematik, Universität Heidelberg
+   Im Neuenheimer Feld 294, D-69120 Heidelberg, Germany
+   Tel (6221) 56 3171
+   Fax (6221) 56 5634
    E-Mail: <Gerhard.Reinelt@IWR.Uni-Heidelberg.DE>
 
-5. Informations on new bounds or optimal solutions for library problems as well as references to computational studies (to be included in the list of references) are also appreciated.
+3. Informations on new bounds or optimal solutions for library problems as well as references to computational studies (to be included in the list of references) are also appreciated.
 
 ---
 
 ## 5. Access
 
-TSPLIB is available at:  
+TSPLIB is available at:
 <http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/>
 
 ---

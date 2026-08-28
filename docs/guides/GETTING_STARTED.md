@@ -1,3 +1,23 @@
+---
+title: Getting Started — TSPLIB95 ETL System
+description: >
+  Quick-start guide for the TSPLIB95 ETL System: installation, first processing
+  run, querying the database, JSON access, configuration notes, and
+  troubleshooting basics.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Repointed the API/architecture links, removed the phantom --config
+          flag usage, and updated output/database paths to the
+          datasets_processed/ layout.
+related_files:
+  - "[User Guide](./USER_GUIDE.md)"
+  - "[Architecture Decisions](../reference/ARCHITECTURE_DECISIONS.md)"
+  - "[Troubleshooting](./TROUBLESHOOTING.md)"
+tags: [guide/setup, guide/quickstart, guide/cli, guide/database, guide/etl, notes/overview, guide/troubleshooting, guide/configuration, analysis/design, notes/usage, guide/json]
+---
 # Getting Started - TSPLIB95 ETL System
 
 ## Quick Start (3 Steps)
@@ -25,7 +45,7 @@ uv run converter process \
   --output datasets/
 
 # With parallel processing (faster)
-uv run converter process -i datasets_raw/problems -o datasets/ --workers 8
+uv run converter process -i datasets_raw/problems -o datasets_processed/ --workers 8
 ```
 
 ### 3. Use Results
@@ -33,7 +53,7 @@ uv run converter process -i datasets_raw/problems -o datasets/ --workers 8
 **Query Database:**
 
 ```bash
-duckdb datasets/db/routing.duckdb
+duckdb datasets_processed/db/routing.duckdb
 ```
 
 ```sql
@@ -41,7 +61,7 @@ duckdb datasets/db/routing.duckdb
 SELECT name, type, dimension FROM problems LIMIT 10;
 
 -- Find large TSP instances
-SELECT name, dimension FROM problems 
+SELECT name, dimension FROM problems
 WHERE type = 'TSP' AND dimension > 1000;
 
 -- Analyze problem distribution
@@ -53,14 +73,14 @@ FROM problems GROUP BY type;
 
 ```bash
 # Problems organized by type
-ls datasets/json/tsp/     # TSP problems
-ls datasets/json/vrp/     # VRP problems
+ls datasets_processed/json/tsp/     # TSP problems
+ls datasets_processed/json/vrp/     # VRP problems
 
 # View single problem
-cat datasets/json/tsp/gr17.json
+cat datasets_processed/json/tsp/gr17.json
 ```
 
-**Use Python API:**
+**Use python API:**
 
 ```python
 import converter
@@ -109,40 +129,40 @@ Organized by problem type with flattened structure:
 uv run converter process --types TSP --types VRP -i large_collection/ -o results/
 
 # Skip unchanged files (incremental updates)
-uv run converter process -i datasets_raw/problems -o datasets/  # Automatic
+uv run converter process -i datasets_raw/problems -o datasets_processed/  # Automatic
 
 # Force reprocess everything
-uv run converter process --force -i datasets_raw/problems -o datasets/
+uv run converter process --force -i datasets_raw/problems -o datasets_processed/
 ```
 
 ### Analyze Problem Collections
 
 ```sql
 -- Problem size distribution
-SELECT 
-  CASE 
+SELECT
+  CASE
     WHEN dimension < 100 THEN 'Small (<100)'
     WHEN dimension < 1000 THEN 'Medium (100-1000)'
     ELSE 'Large (>1000)'
   END as size_category,
   COUNT(*) as count
-FROM problems 
+FROM problems
 GROUP BY size_category;
 
 -- Geographic problems vs others
-SELECT 
-  CASE 
+SELECT
+  CASE
     WHEN edge_weight_type IN ('EUC_2D', 'GEO') THEN 'Geographic'
     WHEN edge_weight_type = 'EXPLICIT' THEN 'Matrix-based'
     ELSE 'Other'
   END as problem_category,
   COUNT(*) as count
-FROM problems 
+FROM problems
 GROUP BY problem_category;
 
 -- VRP problems with capacity constraints
-SELECT name, dimension, capacity 
-FROM problems 
+SELECT name, dimension, capacity
+FROM problems
 WHERE type = 'VRP' AND capacity IS NOT NULL
 ORDER BY dimension;
 ```
@@ -154,19 +174,19 @@ import pandas as pd
 import duckdb
 
 # Connect to database
-conn = duckdb.connect("datasets/db/routing.duckdb")
+conn = duckdb.connect("datasets_processed/db/routing.duckdb")
 
 # Export problems to DataFrame
 problems_df = conn.execute("""
     SELECT name, type, dimension, edge_weight_type, capacity
-    FROM problems 
+    FROM problems
     WHERE dimension BETWEEN 50 AND 500
 """).df()
 
 # Export nodes with coordinates
 nodes_df = conn.execute("""
     SELECT p.name, n.node_id, n.x, n.y, n.demand, n.is_depot
-    FROM problems p 
+    FROM problems p
     JOIN nodes n ON p.id = n.problem_id
     WHERE p.name = 'gr17'
 """).df()
@@ -197,8 +217,12 @@ logging:
 ```
 
 ```bash
-# Use custom config
-uv run converter process --config config.yaml
+# Generate a configuration template for reference, then edit it
+uv run converter init -o config.yaml
+nano config.yaml
+
+# The CLI does not read config.yaml — pass the same values via flags:
+uv run converter process -i ./my_tsplib_files --batch-size 50 --workers 2
 ```
 
 ### Environment Variables
@@ -225,7 +249,7 @@ uv run converter process -o results/
 
 ```bash
 # Reduce batch size and workers
-uv run converter process --batch-size 10 --workers 1 -i datasets_raw/problems -o datasets/
+uv run converter process --batch-size 10 --workers 1 -i datasets_raw/problems -o datasets_processed/
 ```
 
 **"Database locked"**
@@ -267,22 +291,21 @@ print('Success:', data['problem_data']['name'])
 
 ```sql
 -- Check processing status
-SELECT processing_status, COUNT(*) 
-FROM file_tracking 
+SELECT processing_status, COUNT(*)
+FROM file_tracking
 GROUP BY processing_status;
 
 -- Find failed files
-SELECT file_path, error_message 
-FROM file_tracking 
+SELECT file_path, error_message
+FROM file_tracking
 WHERE processing_status = 'failed';
 ```
 
 ## Next Steps
 
 1. **Read [User Guide](USER_GUIDE.md)** for comprehensive usage documentation
-2. **Read [API Reference](API_REFERENCE.md)** for programmatic usage
-3. **Read [Architecture Guide](ARCHITECTURE.md)** to understand system design
-4. **Check [Project Status](PROJECT_STATUS.md)** to see current capabilities and roadmap
+2. **Read [API Reference](USER_GUIDE.md)** for programmatic usage
+3. **Read [Architecture Guide](../reference/ARCHITECTURE_DECISIONS.md)** to understand system design
 
 ## Support
 

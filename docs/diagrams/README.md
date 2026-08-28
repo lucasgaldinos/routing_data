@@ -1,3 +1,21 @@
+---
+title: Technical Diagrams — Index
+description: >
+  Index of the diagram documents (rendered as .md files) visualizing the
+  TSPLIB95 ETL System architecture, database schema, processing flows, and
+  performance characteristics.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Fixed stale diagram-extension references to .md and repointed the
+          architecture details link to the architecture decisions log.
+related_files:
+  - "[Architecture Decisions](../reference/ARCHITECTURE_DECISIONS.md)"
+  - "[User Guide](../guides/USER_GUIDE.md)"
+tags: [notes/diagrams, analysis/architecture, analysis/schema, analysis/performance, notes/overview, guide/etl, analysis/database, analysis/design, notes/er-diagram, guide/reference]
+---
 # Technical Diagrams
 
 This folder contains Mermaid diagrams that visualize various aspects of the TSPLIB95 ETL System.
@@ -6,22 +24,22 @@ This folder contains Mermaid diagrams that visualize various aspects of the TSPL
 
 ### System Architecture
 
-- `converter-architecture.mmd` - Overall system flow and component relationships
-- `processing-pipeline-flow.mmd` - Complete ETL workflow with error handling
+- `converter-architecture.md` - Overall system flow and component relationships
+- `processing-pipeline-flow.md` - Complete ETL workflow with error handling
 
 ### Database & Data
 
-- `database-schema.mmd` - Database tables, relationships, and indexes  
-- `database-queries.mmd` - Example queries and performance patterns
+- `database-schema.md` - Database tables, relationships, and indexes  
+- `database-queries.md` - Example queries and performance patterns
 
 ### Technical Internals
 
-- `data-structures-algorithms.mmd` - Memory layout, algorithmic complexity, parallel processing
-- `performance-scalability.mmd` - Performance metrics, memory analysis, scalability limits
+- `data-structures-algorithms.md` - Memory layout, algorithmic complexity, parallel processing
+- `performance-scalability.md` - Performance metrics, memory analysis, scalability limits
 
 ### Error Handling & Edge Cases
 
-- `error-handling-edge-cases.mmd` - Comprehensive error scenarios and recovery strategies
+- `error-handling-edge-cases.md` - Comprehensive error scenarios and recovery strategies
 
 ## 🎯 Usage Guide
 
@@ -35,13 +53,12 @@ These are Mermaid diagrams that can be viewed:
 
 ### Diagram Categories
 
-**System Overview** → `converter-architecture.mmd`, `processing-pipeline-flow.mmd`  
-**Database Design** → `database-schema.mmd`, `database-queries.mmd`  
-**Performance Analysis** → `data-structures-algorithms.mmd`, `performance-scalability.mmd`  
-**Error Handling** → `error-handling-edge-cases.mmd`
+**System Overview** → `converter-architecture.md`, `processing-pipeline-flow.md`  
+**Database Design** → `database-schema.md`, `database-queries.md`  
+**Performance Analysis** → `data-structures-algorithms.md`, `performance-scalability.md`  
+**Error Handling** → `error-handling-edge-cases.md`
 
 ## 🔗 Related Documentation
 
-- **Architecture Details**: See `../reference/ARCHITECTURE.md`
-- **Performance Info**: See `../development/PROJECT_STATUS.md`
+- **Architecture Details**: See `../reference/ARCHITECTURE_DECISIONS.md`
 - **User Examples**: See `../guides/USER_GUIDE.md`
