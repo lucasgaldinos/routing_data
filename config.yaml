@@ -12,7 +12,14 @@ file_patterns:
 
 # Output settings
 json_output_path: "./datasets/json"
-database_path: "./datasets/db/routing.duckdb"
+
+# NOTE (2026-08-28, Task 2.4): `database_path` is the default recorded by `converter init` and read via `converter.config.load_config()`. The canonical DB for this submodule is `db/routing.duckdb` (submodule root). This value is NOT read by `converter process` — that command derives its DB path from the `-o/--output` option as `<output>/db/routing.duckdb` (default `./datasets`, src/converter/cli/commands.py `process`). To target the canonical DB, run:
+#
+#   uv run converter process -i datasets/problems -o <submodule-root>
+#
+# Relative paths resolve against the process CWD (load_config() does not
+# resolve against this file's location).
+database_path: "./db/routing.duckdb"
 
 # Processing settings
 batch_size: 100

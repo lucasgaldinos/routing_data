@@ -7,7 +7,7 @@ author: Lucas Galdino (derived from AI critique)
 
 ## 📜 Pytest Quality Standards & Rules
 
-You MUST adhere to the following standards when generating, analyzing, or refactoring any test code. These rules are based on the `COMPREHENSIVE_TESTING_CRITIQUE.md` to prevent past failures.
+You MUST adhere to the following standards when generating, analyzing, or refactoring any test code. These rules are based on prior testing critiques to prevent past failures.
 
 ### 1. 🎯 Test Philosophy: Enforce Behavior, Don't Document Bugs
 

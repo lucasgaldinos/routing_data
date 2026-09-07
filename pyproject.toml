@@ -9,9 +9,9 @@ description = "TSPLIB95 ETL Converter - Convert TSPLIB/VRP instances to JSON and
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    {name = "TCC Routing Data Project", email = "lucasgaldinos@example.com"}
+    { name = "TCC Routing Data Project", email = "lucasgaldinos@example.com" },
 ]
-license = {text = "MIT"}
+license = { text = "MIT" }
 keywords = ["tsp", "vrp", "routing", "optimization", "tsplib95", "etl"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "click>=8.3.0",
     "duckdb>=1.4.0",
+    "pandas>=2.3.3",
     "psutil>=5.9.0",
     "pyyaml>=6.0",
 ]
@@ -57,17 +58,3 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = "-v --tb=short"
-
-[tool.ruff]
-target-version = "py311"
-line-length = 100
-select = ["E", "F", "I", "N", "W", "UP"]
-
-[tool.black]
-line-length = 100
-target-version = ["py311"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = true
-warn_unused_ignores = true

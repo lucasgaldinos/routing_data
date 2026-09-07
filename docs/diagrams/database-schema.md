@@ -1,3 +1,32 @@
+---
+title: Database Schema — Entity Relationship Diagram
+description: >
+  Mermaid ER diagram and documentation of the TSPLIB95 ETL Converter DuckDB schema:
+  problems, nodes, edge_weight_matrices, solutions, and file_tracking tables,
+  their relationships, storage strategy, and design decisions.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Repointed the matrix-review references and the architecture-doc
+          reference to ../reference/ARCHITECTURE_DECISIONS.md after the
+          reference-docs merge.
+related_files: [] # markdown relative links, or [] if none
+tags:
+  - analysis/database
+  - analysis/schema
+  - analysis/architecture
+  - notes/schema
+  - notes/database
+  - guide/database
+  - analysis/storage
+  - analysis/design
+  - review/schema
+  - analysis/relationships
+  - notes/er-diagram
+  - guide/etl
+---
 # Database Schema - Entity Relationship Diagram
 
 This diagram shows the database structure for the TSPLIB95 ETL Converter project, which processes TSPLIB95 routing problems into a structured DuckDB database.
@@ -5,6 +34,23 @@ This diagram shows the database structure for the TSPLIB95 ETL Converter project
 ## Mermaid ER Diagram
 
 ```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#e8f4f8'
+    primaryTextColor: '#0d47a1'
+    primaryBorderColor: '#1565c0'
+    lineColor: '#1976d2'
+    fontFamily: 'Segoe UI, Arial, sans-serif'
+    fontSize: 10px
+    background: '#fafafa'
+  flowchart:
+    htmlLabels: true
+    curve: basis
+    useMaxWidth: true
+    diagramPadding: 20
+---
 erDiagram
     problems ||--o{ nodes : "has"
     problems ||--o| edge_weight_matrices : "has"
@@ -47,7 +93,7 @@ erDiagram
     }
 
     edge_weight_matrices {
-        INTEGER problem_id PK_FK "References problems.id"
+        INTEGER problem_id PK,FK "References problems.id"
         INTEGER dimension "Matrix dimension (n×n)"
         VARCHAR matrix_format "FULL_MATRIX, LOWER_ROW, etc"
         BOOLEAN is_symmetric "Symmetric matrix flag"
@@ -90,14 +136,27 @@ erDiagram
 ---
 title: TSPLIB95 ETL Converter Database Schema
 config:
-    layout: dagre
+  theme: base
+  themeVariables:
+    primaryColor: '#e8f4f8'
+    primaryTextColor: '#0d47a1'
+    primaryBorderColor: '#1565c0'
+    lineColor: '#1976d2'
+    fontFamily: 'Segoe UI, Arial, sans-serif'
+    fontSize: 10px
+    background: '#fafafa'
+  flowchart:
+    htmlLabels: true
+    curve: basis
+    useMaxWidth: true
+    diagramPadding: 20
 ---
 erDiagram
     problems ||--o{ nodes : "has nodes"
     problems ||--o| edge_weight_matrices : "may have explicit weights"
     problems ||--o{ solutions : "has solutions"
     problems ||--o{ file_tracking : "tracked by"
-    
+
     problems {
         int id PK "Auto-increment primary key"
         varchar name "Problem name (e.g., br17, gr17)"
@@ -110,7 +169,7 @@ erDiagram
         timestamp created_at "Record creation time"
         timestamp updated_at "Last update time"
     }
-    
+
     nodes {
         int id PK "Auto-increment primary key"
         int problem_id FK "Reference to problems table"
@@ -123,7 +182,7 @@ erDiagram
         double display_x "Display X coordinate"
         double display_y "Display Y coordinate"
     }
-    
+
     edge_weight_matrices {
         int problem_id PK,FK "One-to-one with problems table"
         int dimension "Matrix dimensions (n×n)"
@@ -131,7 +190,7 @@ erDiagram
         boolean is_symmetric "Whether matrix is symmetric"
         text matrix_json "Full n×n matrix as JSON array"
     }
-    
+
     solutions {
         int id PK "Auto-increment primary key"
         int problem_id FK "Reference to problems table"
@@ -141,7 +200,7 @@ erDiagram
         int[][] routes "Solution routes as 2D array"
         timestamp created_at "Record creation time"
     }
-    
+
     file_tracking {
         int id PK "Auto-increment primary key"
         varchar file_path UK "Unique file path"
@@ -231,16 +290,16 @@ Tracks processed files to enable incremental processing. Uses checksums to detec
 **When a file specifies `EDGE_WEIGHT_TYPE: EXPLICIT`:**
 
 - ✅ Store: Full n×n matrix in `edge_weight_matrices` table as JSON
-- ✅ Convert: All formats (FULL_MATRIX, LOWER_ROW, etc.) to full matrix representation  
+- ✅ Convert: All formats (FULL_MATRIX, LOWER_ROW, etc.) to full matrix representation
 - ✅ Preserve: Original `matrix_format` for reference
 - ❌ No nodes: Explicit weight files typically don't include node coordinates
 
 **Examples:**
 
 - `br17.atsp`: TYPE=ATSP, EDGE_WEIGHT_TYPE=EXPLICIT, EDGE_WEIGHT_FORMAT=FULL_MATRIX
-  - 17×17 = 289 distance values provided in file
-  - Stored in edge_weight_matrices table
-  - No coordinate data to store in nodes table
+  + 17×17 = 289 distance values provided in file
+  + Stored in edge_weight_matrices table
+  + No coordinate data to store in nodes table
 
 ### Problems with EDGE_WEIGHT_TYPE = (EUC_2D, GEO, ATT, etc.)
 
@@ -252,10 +311,10 @@ Tracks processed files to enable incremental processing. Uses checksums to detec
 
 **Examples:**
 
-- `gr17.tsp`: TYPE=TSP, EDGE_WEIGHT_TYPE=EUC_2D  
-  - Node coordinates provided (x, y for each node)
-  - Distances computed using Euclidean formula: `sqrt((x2-x1)² + (y2-y1)²)`
-  - No edge weight matrix stored
+- `gr17.tsp`: TYPE=TSP, EDGE_WEIGHT_TYPE=EUC_2D
+  + Node coordinates provided (x, y for each node)
+  + Distances computed using Euclidean formula: `sqrt((x2-x1)² + (y2-y1)²)`
+  + No edge weight matrix stored
 
 ### Why This Distinction Matters
 
@@ -274,15 +333,16 @@ The file content determines storage, not the problem type label.
 - ✅ Convert: All formats to full matrix representation
 - ✅ Preserve: Original matrix_format for reference
 
+>[!note]
 > **Q: Are you sure the matrix is being generated correctly? Is there validation?**
 >
 > **A:**
 >
-> - **Generation**: The transformer.py code correctly converts all 9 TSPLIB95 matrix formats to full n×n matrices using the Matrix classes. The conversion logic is mathematically sound (verified in MATRIX_REVIEW.md).
+> - **Generation**: The transformer.py code correctly converts all 9 TSPLIB95 matrix formats to full n×n matrices using the Matrix classes. The conversion logic is mathematically sound (verified in [ARCHITECTURE_DECISIONS.md](../reference/ARCHITECTURE_DECISIONS.md)).
 > - **Validation**: ⚠️ **CRITICAL GAP** - There is currently NO validation that the number of weights matches the expected size for the format and dimension. For example:
->   - LOWER_ROW with dimension=10 needs 10×9/2 = 45 elements
->   - If file provides only 40 elements, code will raise IndexError when accessing matrix[i,j]
->   - Should raise clear ParseError instead
+>   + LOWER_ROW with dimension=10 needs 10×9/2 = 45 elements
+>   + If file provides only 40 elements, code will raise IndexError when accessing `matrix[i,j]`
+>   + Should raise clear ParseError instead
 > - **Action needed**: Add dimension validation in Matrix.**init**() or transformer._convert_edge_weights_to_matrix()
 
 > **Q: Are those all the formats?**
@@ -290,12 +350,12 @@ The file content determines storage, not the problem type label.
 > **A:** Yes, all 9 TSPLIB95 EDGE_WEIGHT_FORMAT types are implemented:
 >
 > 1. FULL_MATRIX
-> 2-3. UPPER_ROW, UPPER_DIAG_ROW  
+> 2-3. UPPER_ROW, UPPER_DIAG_ROW
 > 4-5. LOWER_ROW, LOWER_DIAG_ROW
 > 6-7. UPPER_COL, UPPER_DIAG_COL
 > 8-9. LOWER_COL, LOWER_DIAG_COL
 >
-> Plus FUNCTION (which means no matrix, compute from coordinates). See MATRIX_REVIEW.md for detailed verification.
+> Plus FUNCTION (which means no matrix, compute from coordinates). See [ARCHITECTURE_DECISIONS.md](../reference/ARCHITECTURE_DECISIONS.md) for detailed verification.
 
 ### Why not store all edges?
 
@@ -308,6 +368,6 @@ Matrix storage is more efficient than row-per-edge for dense graphs.
 
 ## See Also
 
-- [Architecture Documentation](../reference/ARCHITECTURE.md)
+- [Architecture Decisions](../reference/ARCHITECTURE_DECISIONS.md)
 - [Database Operations](../../src/converter/database/operations.py)
 - [Matrix Implementation](../../src/tsplib_parser/matrix.py)

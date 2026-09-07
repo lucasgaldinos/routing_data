@@ -9,7 +9,7 @@ architecture for declarative problem specification parsing.
 Architecture
 ------------
 - **Field System**: Declarative fields (StringField, IntegerField, etc.) define TSPLIB95 keywords
-- **Transformers**: Convert text to structured data (FuncT, ListT, MapT, etc.)
+- **Transformers**: Convert text to structured data (FuncT, listT, MapT, etc.)
 - **StandardProblem**: Main problem class using fields to parse TSPLIB95 format
 - **BiSep & Utils**: Bidirectional separator and utility functions for text processing
 
@@ -38,7 +38,7 @@ IDE support and static type checking with mypy/Pylance.
 """
 import re
 import itertools
-from typing import Any, Dict, List, Optional, Callable, TypeVar, Generic, Tuple, Union
+from typing import Any, Optional, Callable, TypeVar, Generic, Union
 from . import exceptions
 from . import matrix
 
@@ -49,24 +49,24 @@ from . import matrix
 
 class BiSep:
     """Bidirectional separator for parsing."""
-    def __init__(self, *, in_: Optional[str] = None, out: str = ' ') -> None:
-        self.i: Optional[str] = in_
+    def __init__(self, *, in_: str | None = None, out: str = ' ') -> None:
+        self.i: str | None = in_
         self.o: str = out
 
-    def split(self, text: str, maxsplit: Optional[int] = None) -> List[str]:
+    def split(self, text: str, maxsplit: int | None = None) -> list[str]:
         maxsplit_val: int = -1 if maxsplit is None else maxsplit
         return text.split(self.i, maxsplit=maxsplit_val)
 
-    def join(self, items: List[str]) -> str:
+    def join(self, items: list[str]) -> str:
         # self.o is never None (always has default ' '), but keep defensive check
         o: str = ' ' if not self.o else self.o
         return o.join(items)
 
 
-def _bisep_from_value(value: Union[str, Tuple[Optional[str], str], None]) -> BiSep:
+def _bisep_from_value(value: Union[str, tuple[Optional[str], str], None]) -> BiSep:
     """Create BiSep from value - inlined from bisep.py"""
     if value is None or isinstance(value, str):
-        i: Optional[str] = value
+        i: str | None = value
         o: str = value if value is not None else ' '
     else:
         try:
@@ -77,7 +77,7 @@ def _bisep_from_value(value: Union[str, Tuple[Optional[str], str], None]) -> BiS
     return BiSep(in_=i, out=o)
 
 
-def _friendly_join(items: List[str], limit: Optional[int] = None) -> str:
+def _friendly_join(items: list[str], limit: int | None = None) -> str:
     """Join items in a friendly way for error messages - inlined from utils.py"""
     if not items:
         return ''
@@ -105,12 +105,12 @@ def _friendly_join(items: List[str], limit: Optional[int] = None) -> str:
 
 # Type variables for generic transformers
 T = TypeVar('T')  # Generic output type for transformers
-T_Container = TypeVar('T_Container')  # Generic container type (List or Dict)
+T_Container = TypeVar('T_Container')  # Generic container type (list or dict)
 
 
 class Transformer(Generic[T]):
     """Base transformer class for parsing text into structured data."""
-    
+
     def parse(self, text: str) -> T:
         """Parse text into a value."""
         raise NotImplementedError()
@@ -122,7 +122,7 @@ class Transformer(Generic[T]):
 
 class FuncT(Transformer[T]):
     """Transformer that applies a function to parse text."""
-    
+
     def __init__(self, *, func: Optional[Callable[[str], T]] = None) -> None:
         self.func: Callable[[str], T] = func or (lambda x: x)  # type: ignore
 
@@ -151,20 +151,20 @@ class ContainerT(Transformer[T_Container], Generic[T_Container]):
     """Base transformer for containers (lists, dicts)."""
 
     def __init__(
-        self, 
-        *, 
-        value: Optional[Transformer[Any]] = None, 
-        sep: Union[str, Tuple[Optional[str], str], None] = None, 
-        terminal: Optional[str] = None,
-        terminal_required: bool = True, 
-        size: Optional[int] = None, 
+        self,
+        *,
+        value: Optional[Transformer[Any]] = None,
+        sep: Union[str, tuple[Optional[str], str], None] = None,
+        terminal: str | None = None,
+        terminal_required: bool = True,
+        size: int | None = None,
         filter_empty: bool = True
     ) -> None:
         self.child_tf: Transformer[Any] = value or Transformer()
         self.sep: BiSep = _bisep_from_value(sep)
-        self.terminal: Optional[str] = terminal
+        self.terminal: str | None = terminal
         self.terminal_required: bool = terminal_required
-        self.size: Optional[int] = size
+        self.size: int | None = size
         self.filter_empty: bool = filter_empty
 
     def parse(self, text: str) -> T_Container:
@@ -181,7 +181,7 @@ class ContainerT(Transformer[T_Container], Generic[T_Container]):
 
         # split text into raw items
         if self.sep.i is None:
-            items: List[str] = text.split()
+            items: list[str] = text.split()
         else:
             items = self.sep.split(text)
 
@@ -190,8 +190,8 @@ class ContainerT(Transformer[T_Container], Generic[T_Container]):
             items = [i for i in items if i]
 
         # parse each item using the child transformer
-        errors: List[str] = []
-        parsed_items: List[Any] = []
+        errors: list[str] = []
+        parsed_items: list[Any] = []
         for _, item in enumerate(items):
             try:
                 parsed_items.append(self.child_tf.parse(item))
@@ -210,41 +210,41 @@ class ContainerT(Transformer[T_Container], Generic[T_Container]):
 
         return self.pack(parsed_items)
 
-    def pack(self, items: List[Any]) -> T_Container:
+    def pack(self, items: list[Any]) -> T_Container:
         """Pack items into final container."""
         raise NotImplementedError()
 
-    def unpack(self, container: T_Container) -> List[Any]:
+    def unpack(self, container: T_Container) -> list[Any]:
         """Unpack container into items."""
         raise NotImplementedError()
 
 
-class ListT(ContainerT[List[Any]]):
+class listT(ContainerT[list[Any]]):
     """Transformer for a list of items."""
 
-    def pack(self, items: List[Any]) -> List[Any]:
+    def pack(self, items: list[Any]) -> list[Any]:
         return list(items)
 
-    def unpack(self, container: List[Any]) -> List[Any]:
+    def unpack(self, container: list[Any]) -> list[Any]:
         return list(container)
 
 
-class MapT(ContainerT[Dict[Any, Any]]):
+class MapT(ContainerT[dict[Any, Any]]):
     """Transformer for a key-value mapping of items."""
 
     def __init__(
-        self, 
-        *, 
-        key: Optional[Transformer[Any]] = None, 
-        value: Optional[Transformer[Any]] = None, 
-        kv_sep: str = '=', 
+        self,
+        *,
+        key: Optional[Transformer[Any]] = None,
+        value: Optional[Transformer[Any]] = None,
+        kv_sep: str = '=',
         **kwargs: Any
     ) -> None:
         super().__init__(value=value, **kwargs)
         self.key_tf: Transformer[Any] = key or Transformer()
         self.kv_sep: BiSep = _bisep_from_value(kv_sep)
 
-    def parse(self, text: str) -> Dict[Any, Any]:
+    def parse(self, text: str) -> dict[Any, Any]:
         # start without unpredictable whitespace
         text = text.strip()
 
@@ -257,7 +257,7 @@ class MapT(ContainerT[Dict[Any, Any]]):
 
         # split text into raw items
         if self.sep.i is None:
-            items: List[str] = text.split()
+            items: list[str] = text.split()
         else:
             items = self.sep.split(text)
 
@@ -266,8 +266,8 @@ class MapT(ContainerT[Dict[Any, Any]]):
             items = [i for i in items if i]
 
         # parse each item as a key-value pair
-        data: Dict[Any, Any] = {}
-        errors: List[str] = []
+        data: dict[Any, Any] = {}
+        errors: list[str] = []
         for item in items:
             if self.kv_sep.i is None:
                 # no separator means key and value are the same
@@ -308,10 +308,10 @@ class MapT(ContainerT[Dict[Any, Any]]):
 
         return data
 
-    def pack(self, items: List[Tuple[Any, Any]]) -> Dict[Any, Any]:
+    def pack(self, items: list[tuple[Any, Any]]) -> dict[Any, Any]:
         return dict(items)
 
-    def unpack(self, container: Dict[Any, Any]) -> List[Tuple[Any, Any]]:
+    def unpack(self, container: dict[Any, Any]) -> list[tuple[Any, Any]]:
         return list(container.items())
 
 
@@ -326,7 +326,7 @@ class Field:
 
     def __init__(self, keyword: str, **options: Any) -> None:
         self.keyword: str = keyword
-        self.name: Optional[str] = None
+        self.name: str | None = None
         for key, value in options.items():
             setattr(self, key, value)
 
@@ -392,23 +392,23 @@ class IntegerField(TransformerField):
 class IndexedCoordinatesField(TransformerField):
     """Field for coordinates by index."""
 
-    default: Callable[[], Dict[Any, Any]] = dict  # type: ignore[assignment]
+    default: Callable[[], dict[Any, Any]] = dict  # type: ignore[assignment]
 
-    def __init__(self, *args: Any, dimensions: Optional[Union[int, Tuple[int, ...]]] = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, dimensions: Optional[Union[int, tuple[int, ...]]] = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.dimensions: Optional[Tuple[int, ...]] = self._tuplize(dimensions)
+        self.dimensions: Optional[tuple[int, ...]] = self._tuplize(dimensions)
 
     @staticmethod
-    def _tuplize(dimensions: Optional[Union[int, Tuple[int, ...]]]) -> Optional[Tuple[int, ...]]:
+    def _tuplize(dimensions: Optional[Union[int, tuple[int, ...]]]) -> Optional[tuple[int, ...]]:
         return (dimensions,) if isinstance(dimensions, int) else (dimensions if isinstance(dimensions, tuple) else None)
 
     @classmethod
-    def build_transformer(cls) -> Transformer[Dict[int, List[Union[int, float]]]]:
+    def build_transformer(cls) -> Transformer[dict[int, list[Union[int, float]]]]:
         key: FuncT[int] = FuncT(func=int)
-        value: ListT = ListT(value=NumberT())
+        value: listT = listT(value=NumberT())
         return MapT(key=key, value=value, sep='\n', kv_sep=' ')
 
-    def validate(self, value: Dict[int, List[Union[int, float]]]) -> None:
+    def validate(self, value: dict[int, list[Union[int, float]]]) -> None:
         super().validate(value)
         cards = set(len(coord) for coord in value.values())
         if self.dimensions is not None and cards - set(self.dimensions):
@@ -418,21 +418,21 @@ class IndexedCoordinatesField(TransformerField):
 class DepotsField(TransformerField):
     """Field for depots."""
 
-    default: Callable[[], List[Any]] = list  # type: ignore[assignment]
+    default: Callable[[], list[Any]] = list  # type: ignore[assignment]
 
     @classmethod
-    def build_transformer(cls) -> Transformer[List[int]]:
+    def build_transformer(cls) -> Transformer[list[int]]:
         depot: FuncT[int] = FuncT(func=int)
-        return ListT(value=depot, terminal='-1')
+        return listT(value=depot, terminal='-1')
 
 
 class DemandsField(TransformerField):
     """Field for demands."""
 
-    default: Callable[[], Dict[Any, Any]] = dict  # type: ignore[assignment]
+    default: Callable[[], dict[Any, Any]] = dict  # type: ignore[assignment]
 
     @classmethod
-    def build_transformer(cls) -> Transformer[Dict[int, int]]:
+    def build_transformer(cls) -> Transformer[dict[int, int]]:
         node: FuncT[int] = FuncT(func=int)
         demand: FuncT[int] = FuncT(func=int)
         return MapT(key=node, value=demand, sep='\n', kv_sep=' ')
@@ -441,29 +441,29 @@ class DemandsField(TransformerField):
 class MatrixField(TransformerField):
     """Field for a matrix of numbers (EDGE_WEIGHT_SECTION)."""
 
-    default: Callable[[], List[Any]] = list  # type: ignore[assignment]
+    default: Callable[[], list[Any]] = list  # type: ignore[assignment]
 
     @classmethod
-    def build_transformer(cls) -> Transformer[List[List[Union[int, float]]]]:
-        row: ListT = ListT(value=NumberT())
-        return ListT(value=row, sep='\n')
+    def build_transformer(cls) -> Transformer[list[list[Union[int, float]]]]:
+        row: listT = listT(value=NumberT())
+        return listT(value=row, sep='\n')
 
 
 class EdgeDataField(TransformerField):
     """Field for edge data."""
 
-    default: Callable[[], Dict[Any, Any]] = dict  # type: ignore[assignment]
+    default: Callable[[], dict[Any, Any]] = dict  # type: ignore[assignment]
 
     @classmethod
-    def build_transformer(cls) -> Transformer[Dict[List[int], int]]:
-        edge: ListT = ListT(value=FuncT(func=int), size=2)
+    def build_transformer(cls) -> Transformer[dict[list[int], int]]:
+        edge: listT = listT(value=FuncT(func=int), size=2)
         return MapT(key=edge, value=FuncT(func=int), sep='\n', kv_sep=' ')
 
 
 class ToursField(Field):
     """Field for one or more tours."""
 
-    default: Callable[[], List[Any]] = list  # type: ignore[assignment]
+    default: Callable[[], list[Any]] = list  # type: ignore[assignment]
 
     def __init__(self, *args: Any, require_terminal: bool = True) -> None:
         super().__init__(*args)
@@ -472,9 +472,9 @@ class ToursField(Field):
         self._end_terminals: re.Pattern[str] = re.compile(rf'(?:(?:\s+|\b|^){self.terminal})+$')
         self._any_terminal: re.Pattern[str] = re.compile(rf'(?:\s+|\b){self.terminal}(?:\b|\s+)')
 
-    def parse(self, text: str) -> List[List[int]]:
+    def parse(self, text: str) -> list[list[int]]:
         """Parse the text into a list of tours."""
-        tours: List[List[int]] = []
+        tours: list[list[int]] = []
 
         # remove any terminal at the end
         text = self._end_terminals.sub('', text).strip()
@@ -482,12 +482,12 @@ class ToursField(Field):
             return tours
 
         # split text on any terminal that's not at the end
-        segments: List[str] = self._any_terminal.split(text)
+        segments: list[str] = self._any_terminal.split(text)
 
         for segment in segments:
             if not segment.strip():
                 continue
-            tour: List[int] = []
+            tour: list[int] = []
             for city in segment.split():
                 if city == self.terminal:
                     break
@@ -507,22 +507,22 @@ class ToursField(Field):
 
 class FileMeta(type):
     """Metaclass that builds field mappings for Problem classes."""
-    
+
     # Class attributes that will be added to Problem classes
-    fields_by_name: Dict[str, Field]
-    fields_by_keyword: Dict[str, Field]
+    fields_by_name: dict[str, Field]
+    fields_by_keyword: dict[str, Field]
 
     def __new__(
-        mcs, 
-        name: str, 
-        bases: Tuple[type, ...], 
-        attrs: Dict[str, Any], 
+        mcs,
+        name: str,
+        bases: tuple[type, ...],
+        attrs: dict[str, Any],
         **kwargs: Any
     ) -> type:
         cls = super().__new__(mcs, name, bases, attrs)
 
         # collect fields from this class and all parent classes
-        fields: Dict[str, Field] = {}
+        fields: dict[str, Field] = {}
         for klass in reversed(cls.__mro__):
             for key, value in vars(klass).items():
                 if isinstance(value, Field):
@@ -537,10 +537,10 @@ class FileMeta(type):
 
 class Problem(metaclass=FileMeta):
     """Base problem class."""
-    
+
     # Attributes added by metaclass
-    fields_by_name: Dict[str, Field]
-    fields_by_keyword: Dict[str, Field]
+    fields_by_name: dict[str, Field]
+    fields_by_keyword: dict[str, Field]
 
     def __init__(self, **kwargs: Any) -> None:
         for name, value in kwargs.items():
@@ -549,7 +549,7 @@ class Problem(metaclass=FileMeta):
     def __getattribute__(self, name: str) -> Any:
         # check for a value like normal
         try:
-            attrs: Dict[str, Any] = object.__getattribute__(self, '__dict__')
+            attrs: dict[str, Any] = object.__getattribute__(self, '__dict__')
             return attrs[name]
         except KeyError:
             pass
@@ -565,9 +565,9 @@ class Problem(metaclass=FileMeta):
         else:
             return field.get_default_value()
 
-    def as_dict(self, by_keyword: bool = False) -> Dict[str, Any]:
+    def as_dict(self, by_keyword: bool = False) -> dict[str, Any]:
         """Return the problem data as a dictionary."""
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         for name, field in self.__class__.fields_by_name.items():
             value = getattr(self, name)
             if name in self.__dict__ or value != field.get_default_value():
@@ -575,11 +575,11 @@ class Problem(metaclass=FileMeta):
                 data[key] = value
         return data
 
-    def as_name_dict(self) -> Dict[str, Any]:
+    def as_name_dict(self) -> dict[str, Any]:
         """Return the problem data as a dictionary by field name."""
         return self.as_dict(by_keyword=False)
 
-    def as_keyword_dict(self) -> Dict[str, Any]:
+    def as_keyword_dict(self) -> dict[str, Any]:
         """Return the problem data as a dictionary by field keyword."""
         return self.as_dict(by_keyword=True)
 
@@ -646,12 +646,12 @@ class StandardProblem(Problem):
     demands = DemandsField('DEMAND_SECTION')
     tours = ToursField('TOUR_SECTION')
 
-    @classmethod 
+    @classmethod
     def parse(cls, text: str, **options: Any) -> 'StandardProblem':
         """Parse TSPLIB95 format text into StandardProblem."""
         problem = cls()
-        current_section: Optional[str] = None
-        section_lines: List[str] = []
+        current_section: str | None = None
+        section_lines: list[str] = []
 
         for line in text.split('\n'):
             line_stripped: str = line.strip()
@@ -709,43 +709,43 @@ class StandardProblem(Problem):
                     pass  # Skip parsing errors
 
         return problem
-    
+
     def create_explicit_matrix(self) -> Optional[matrix.Matrix]:
-        """Convert edge_weights List[List] to Matrix object for EXPLICIT problems.
-        
+        """Convert edge_weights list[list] to Matrix object for EXPLICIT problems.
+
         Handles two TSPLIB format quirks:
         1. SOP files include dimension as first element in EDGE_WEIGHT_SECTION
         2. VRP files may use customer-only matrices (dimension excludes depot)
-        
+
         Returns:
             Matrix object if edge_weight_format is set, None otherwise
         """
         if not self.edge_weight_format or not self.edge_weights:
             return None
-        
+
         MatrixClass = matrix.TYPES.get(self.edge_weight_format)
         if not MatrixClass:
             return None
-        
+
         weights = list(itertools.chain(*self.edge_weights))
-        
+
         # Fix 1: SOP files have dimension marker as first element
         if self.problem_type == 'SOP' and len(weights) > 0:
             # Check if first element matches dimension (dimension marker)
             if int(weights[0]) == self.dimension:
                 weights = weights[1:]  # Skip dimension marker
-        
+
         # Fix 2: VRP files may use customer-only matrices (dimension - 1)
         # because dimension includes depot but matrix only covers customer-to-customer distances
         actual_dimension = self.dimension
         if self.problem_type in ['CVRP', 'VRP']:
             expected_full = MatrixClass._calculate_expected_size(self.dimension)
             expected_customers = MatrixClass._calculate_expected_size(self.dimension - 1)
-            
+
             if len(weights) == expected_customers:
                 actual_dimension = self.dimension - 1
             elif len(weights) != expected_full:
                 # Neither matches - let Matrix.__init__ raise the validation error
                 pass
-        
+
         return MatrixClass(weights, actual_dimension, min_index=0)

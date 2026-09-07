@@ -1,24 +1,24 @@
 # TSPLIB 95
 
-Gerhard Reinelt  
-Universität Heidelberg  
-Institut für Angewandte Mathematik  
-Im Neuenheimer Feld 294  
-D-69120 Heidelberg  
+Gerhard Reinelt
+Universität Heidelberg
+Institut für Angewandte Mathematik
+Im Neuenheimer Feld 294
+D-69120 Heidelberg
 <Gerhard.Reinelt@IWR.Uni-Heidelberg.DE>
 
 TSPLIB is a library of sample instances for the TSP (and related problems) from various sources and of various types. Instances of the following problem classes are available.
 
 - Symmetric traveling salesman problem (TSP)
-  - Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. The distance from node i to node j is the same as from node j to node i.
+  + Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. The distance from node i to node j is the same as from node j to node i.
 - Hamiltonian cycle problem (HCP)
-  - Given a graph, test if the graph contains a Hamiltonian cycle or not.
+  + Given a graph, test if the graph contains a Hamiltonian cycle or not.
 - Asymmetric traveling salesman problem (ATSP)
-  - Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. In this case, the distance from node i to node j and the distance from node j to node i may be different.
+  + Given a set of n nodes and distances for each pair of nodes, find a roundtrip of minimal total length visiting each node exactly once. In this case, the distance from node i to node j and the distance from node j to node i may be different.
 - Sequential ordering problem (SOP)
-  - This problem is an asymmetric traveling salesman problem with additional constraints. Given a set of n nodes and distances for each pair of nodes, find a Hamiltonian path from node 1 to node n of minimal length which takes given precedence constraints into account. Each precedence constraint requires that some node i has to be visited before some other node j.
+  + This problem is an asymmetric traveling salesman problem with additional constraints. Given a set of n nodes and distances for each pair of nodes, find a Hamiltonian path from node 1 to node n of minimal length which takes given precedence constraints into account. Each precedence constraint requires that some node i has to be visited before some other node j.
 - Capacitated vehicle routing problem (CVRP)
-  - We are given n−1 nodes, one depot and distances from the nodes to the depot, as well as between nodes. All nodes have demands which can be satisfied by the depot. For delivery to the nodes, trucks with identical capacities are available. The problem is to find tours for the trucks of minimal total length that satisfy the node demands without violating truck capacity constraint. The number of trucks is not specified. Each tour visits a subset of the nodes and starts and terminates at the depot. (Remark: In some data files a collection of alternate depots is given. A CVRP is then given by selecting one of these depots.)
+  + We are given n−1 nodes, one depot and distances from the nodes to the depot, as well as between nodes. All nodes have demands which can be satisfied by the depot. For delivery to the nodes, trucks with identical capacities are available. The problem is to find tours for the trucks of minimal total length that satisfy the node demands without violating truck capacity constraint. The number of trucks is not specified. Each tour visits a subset of the nodes and starts and terminates at the depot. (Remark: In some data files a collection of alternate depots is given. A CVRP is then given by selecting one of these depots.)
 
 Except for the Hamiltonian cycle problems, all problems are defined on a complete graph and, at present, all distances are integer numbers. There is a possibility to require that certain edges appear in the solution of a problem.
 
@@ -134,10 +134,13 @@ Depending on the choice of specifications some additional data may be required. 
 Node coordinates are given in this section.
 
 - If `NODE_COORD_TYPE` is `TWOD_COORDS`:
+
   ```
   <integer> <real> <real>
   ```
+
 - If `NODE_COORD_TYPE` is `THREED_COORDS`:
+
   ```
   <integer> <real> <real> <real>
   ```
@@ -163,15 +166,19 @@ The first integer specifies a node number, the second its demand. The depot node
 Edges of a graph are specified in either of the two formats allowed in the `EDGE_DATA_FORMAT` entry.
 
 - If the type is `EDGE_LIST`, then the edges are given as a sequence of lines of the form:
+
   ```
   <integer> <integer>
   ```
+
   Each entry gives the terminal nodes of some edge. The list is terminated by a `-1`.
 
 - If the type is `ADJ_LIST`, the section consists of a list of adjacency lists for nodes. The adjacency list of a node x is specified as:
+
   ```
   <integer> <integer> ... <integer> -1
   ```
+
   where the first integer gives the number of node x and the following integers (terminated by `-1`) the numbers of nodes adjacent to x. The list of adjacency lists is terminated by an additional `-1`.
 
 #### 1.2.5 `FIXED_EDGES_SECTION`
@@ -351,8 +358,8 @@ To verify correctness of the distance function implementations we give the lengt
 - `gr666` — 423 710
 - `att532` — 309 636
 - `xray14012` (problem 8 in [1]):
-  - with `XRAY1` — 15 429 219
-  - with `XRAY2` — 12 943 294
+  + with `XRAY1` — 15 429 219
+  + with `XRAY2` — 12 943 294
 
 ---
 
@@ -544,36 +551,35 @@ Table 2 lists the ATSP instances (in directory `atsp`) together with their optim
 
 Table 2:
 
-```
-Name   #cities  Type    Optimum
-br17   17       MATRIX  39
-ft53   53       MATRIX  6905
-ft70   70       MATRIX  38673
-ftv33  34       MATRIX  1286
-ftv35  36       MATRIX  1473
-ftv38  39       MATRIX  1530
-ftv44  45       MATRIX  1613
-ftv47  48       MATRIX  1776
-ftv55  56       MATRIX  1608
-ftv64  65       MATRIX  1839
-ftv70  71       MATRIX  1950
-ftv90  91       MATRIX  1579
-ftv100 101      MATRIX  1788
-ftv110 111      MATRIX  1958
-ftv120 121      MATRIX  2166
-ftv130 131      MATRIX  2307
-ftv140 141      MATRIX  2420
-ftv150 151      MATRIX  2611
-ftv160 161      MATRIX  2683
-ftv170 171      MATRIX  2755
-kro124 100      MATRIX  36230
-p43    43       MATRIX  5620
-rbg323 323      MATRIX  1326
-rbg358 358      MATRIX  1163
-rbg403 403      MATRIX  2465
-rbg443 443      MATRIX  2720
-ry48p  48       MATRIX  14422
-```
+| Name | #cities | Type | Optimum |
+| --- | --- | --- | --- |
+| br17 | 17 | MATRIX | 39 |
+| ft53 | 53 | MATRIX | 6905 |
+| ft70 | 70 | MATRIX | 38673 |
+| ftv33 | 34 | MATRIX | 1286 |
+| ftv35 | 36 | MATRIX | 1473 |
+| ftv38 | 39 | MATRIX | 1530 |
+| ftv44 | 45 | MATRIX | 1613 |
+| ftv47 | 48 | MATRIX | 1776 |
+| ftv55 | 56 | MATRIX | 1608 |
+| ftv64 | 65 | MATRIX | 1839 |
+| ftv70 | 71 | MATRIX | 1950 |
+| ftv90 | 91 | MATRIX | 1579 |
+| ftv100 | 101 | MATRIX | 1788 |
+| ftv110 | 111 | MATRIX | 1958 |
+| ftv120 | 121 | MATRIX | 2166 |
+| ftv130 | 131 | MATRIX | 2307 |
+| ftv140 | 141 | MATRIX | 2420 |
+| ftv150 | 151 | MATRIX | 2611 |
+| ftv160 | 161 | MATRIX | 2683 |
+| ftv170 | 171 | MATRIX | 2755 |
+| kro124 | 100 | MATRIX | 36230 |
+| p43 | 43 | MATRIX | 5620 |
+| rbg323 | 323 | MATRIX | 1326 |
+| rbg358 | 358 | MATRIX | 1163 |
+| rbg403 | 403 | MATRIX | 2465 |
+| rbg443 | 443 | MATRIX | 2720 |
+| ry48p | 48 | MATRIX | 14422 |
 
 ### 3.4 Sequential ordering problems
 
@@ -585,56 +591,56 @@ Table 3 lists the SOP instances (in directory `sop`) together with their known l
 
 Table 3:
 
-```
-Name        #nodes  #prec  Type    Bounds
-ESC07       96      -      MATRIX  2125
-ESC11       133     -      MATRIX  2075
-ESC12       147     -      MATRIX  1675
-ESC25       279     -      MATRIX  1681
-ESC47       491     10     MATRIX  1288
-ESC63       659     95     MATRIX  62
-ESC78       807     77     MATRIX  18230
-br17.10     17      10     MATRIX  55
-br17.12     17      12     MATRIX  55
-ft53.1      54      12     MATRIX  [7438,7570]
-ft53.2      54      25     MATRIX  [7630,8335]
-ft53.3      54      48     MATRIX  [9473,10935]
-ft53.4      56      63     MATRIX  14425
-ft70.1      71      17     MATRIX  39313
-ft70.2      71      35     MATRIX  [39739,41778]
-ft70.3      71      68     MATRIX  [41305,44732]
-ft70.4      71      86     MATRIX  [52269,53882]
-kro124p.1   101     25     MATRIX  [37722,42845]
-kro124p.2   101     49     MATRIX  [38534,45848]
-kro124p.3   101     97     MATRIX  [40967,55649]
-kro124p.4   101     131    MATRIX  [64858,80753]
-p43.1       44      9      MATRIX  27990
-p43.2       44      20     MATRIX  [28175,28330]
-p43.3       44      37     MATRIX  [28366,28680]
-p43.4       44      50     MATRIX  [69569,82960]
-prob.42     42      10     MATRIX  243
-prob.100    100     41     MATRIX  [1024,1385]
-rbg048a     50      192    MATRIX  351
-rbg050c     52      256    MATRIX  467
-rbg109a     111     622    MATRIX  1038
-rbg150a     152     952    MATRIX  [1748,1750]
-rbg174a     176     1113   MATRIX  2053
-rbg253a     255     1721   MATRIX  [2928,2987]
-rbg323a     325     2412   MATRIX  [3136,3221]
-rbg341a     343     2542   MATRIX  [2543,2854]
-rbg358a     360     3239   MATRIX  [2518,2758]
-rbg378a     380     3069   MATRIX  [2761,3142]
-ry48p.1     49      11     MATRIX  [15220,15935]
-ry48p.2     49      23     MATRIX  [15524,17071]
-ry48p.3     49      42     MATRIX  [18156,20051]
-ry48p.4     49      58     MATRIX  [29967,31446]
-```
+| Name    |    #nodes |  #prec |  Type |    Bounds |
+| --- | --- | --- | --- |
+| ESC07    |   96 |      - |      MATRIX |  2125 |
+| ESC11    |   133 |     - |      MATRIX |  2075 |
+| ESC12    |   147 |     - |      MATRIX |  1675 |
+| ESC25    |   279 |     - |      MATRIX |  1681 |
+| ESC47    |   491 |     10 |     MATRIX |  1288 |
+| ESC63    |   659 |     95 |     MATRIX |  62 |
+| ESC78    |   807 |     77 |     MATRIX |  18230 |
+| br17.10 |    17 |      10 |     MATRIX |  55 |
+| br17.12 |    17 |      12 |     MATRIX |  55 |
+| ft53.1  |    54 |      12 |     MATRIX |  [7438,7570] |
+| ft53.2  |    54 |      25 |     MATRIX |  [7630,8335] |
+| ft53.3  |    54 |      48 |     MATRIX |  [9473,10935] |
+| ft53.4  |    56 |      63 |     MATRIX |  14425 |
+| ft70.1  |    71 |      17 |     MATRIX |  39313 |
+| ft70.2  |    71 |      35 |     MATRIX |  [39739,41778] |
+| ft70.3  |    71 |      68 |     MATRIX |  [41305,44732] |
+| ft70.4  |    71 |      86 |     MATRIX |  [52269,53882] |
+| kro124p.1  | 101 |     25 |     MATRIX |  [37722,42845] |
+| kro124p.2  | 101 |     49 |     MATRIX |  [38534,45848] |
+| kro124p.3  | 101 |     97 |     MATRIX |  [40967,55649] |
+| kro124p.4  | 101 |     131 |    MATRIX |  [64858,80753] |
+| p43.1  |     44 |      9 |      MATRIX |  27990 |
+| p43.2  |     44 |      20 |     MATRIX |  [28175,28330] |
+| p43.3  |     44 |      37 |     MATRIX |  [28366,28680] |
+| p43.4  |     44 |      50 |     MATRIX |  [69569,82960] |
+| prob.42 |    42 |      10 |     MATRIX |  243 |
+| prob.100|    100 |     41 |     MATRIX |  [1024,1385] |
+| rbg048a    | 50 |      192 |    MATRIX |  351 |
+| rbg050c    | 52 |      256 |    MATRIX |  467 |
+| rbg109a    | 111 |     622 |    MATRIX |  1038 |
+| rbg150a    | 152 |     952 |    MATRIX |  [1748,1750] |
+| rbg174a    | 176 |     1113 |   MATRIX |  2053 |
+| rbg253a    | 255 |     1721 |   MATRIX |  [2928,2987] |
+| rbg323a    | 325 |     2412 |   MATRIX |  [3136,3221] |
+| rbg341a    | 343 |     2542 |   MATRIX |  [2543,2854] |
+| rbg358a    | 360 |     3239 |   MATRIX |  [2518,2758] |
+| rbg378a    | 380 |     3069 |   MATRIX |  [2761,3142] |
+| ry48p.1  |   49 |      11 |     MATRIX |  [15220,15935] |
+| ry48p.2  |   49 |      23 |     MATRIX |  [15524,17071] |
+| ry48p.3  |   49 |      42 |     MATRIX |  [18156,20051] |
+| ry48p.4  |   49 |      58 |     MATRIX |  [29967,31446] |
 
 ### 3.5 Capacitated vehicle routing problems
 
 Data for capacitated vehicle routing problems is contained in the directory `vrp`. Data files have suffix `.vrp`. At present, we have the data files
 
 ```
+
 att48.vrp
 eil7.vrp
 eil13.vrp
@@ -651,6 +657,7 @@ eilD76.vrp
 eilA101.vrp
 eilB101.vrp
 gil262.vrp
+
 ```
 
 Various problems can be defined on these data sets, e.g., depending on whether the number of vehicles is fixed, so we do not list optimal solutions here. Some values are given in the data files themselves.
@@ -671,6 +678,7 @@ In addition to the data and solution files, the following special files are cont
 2. Some data sets are referred to by different names in the literature. Below we give the corresponding names used in [3] and [2].
 
 ```
+
 TSPLIB     [3]     [2]          TSPLIB     [3]     [2]
 att48      ATT048  -            att532     ATT532  -
 dantzig42  -       42           eil101     EIL10   -
@@ -692,25 +700,26 @@ pr152      TK152   -            pr226      TK226   -
 pr2392     TK2392  -            pr264      TK264   -
 pr299      TK299   -            pr439      TK439   -
 pr76       TK076   -            st70       KRO070  70
+
 ```
 
-3. Some vehicle routing problems are also available in a TSP version. Here the depots are just treated as normal nodes. The problem `gil262` originally contained two identical nodes, of which one was eliminated.
-4. Potential contributors to this library should provide their data files in appropriate format and contact
+1. Some vehicle routing problems are also available in a TSP version. Here the depots are just treated as normal nodes. The problem `gil262` originally contained two identical nodes, of which one was eliminated.
+2. Potential contributors to this library should provide their data files in appropriate format and contact
 
-   Gerhard Reinelt  
-   Institut für Angewandte Mathematik, Universität Heidelberg  
-   Im Neuenheimer Feld 294, D-69120 Heidelberg, Germany  
-   Tel (6221) 56 3171  
-   Fax (6221) 56 5634  
+   Gerhard Reinelt
+   Institut für Angewandte Mathematik, Universität Heidelberg
+   Im Neuenheimer Feld 294, D-69120 Heidelberg, Germany
+   Tel (6221) 56 3171
+   Fax (6221) 56 5634
    E-Mail: <Gerhard.Reinelt@IWR.Uni-Heidelberg.DE>
 
-5. Informations on new bounds or optimal solutions for library problems as well as references to computational studies (to be included in the list of references) are also appreciated.
+3. Informations on new bounds or optimal solutions for library problems as well as references to computational studies (to be included in the list of references) are also appreciated.
 
 ---
 
 ## 5. Access
 
-TSPLIB is available at:  
+TSPLIB is available at:
 <http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/>
 
 ---

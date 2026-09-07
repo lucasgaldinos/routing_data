@@ -1,3 +1,25 @@
+---
+title: TSPLIB95 ETL System — Documentation Index
+description: >
+  Index of the TSPLIB95 ETL System documentation: user guides, technical
+  references, development resources, and visual diagram links.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Repointed dangling links (API reference, architecture guide, developer
+          workflow, performance benchmarks), removed the dead archive section,
+          repointed external resources to the TSPLIB95 format reference, fixed
+          stale diagram-extension links in the diagrams index, and updated
+          output paths to datasets_processed/.
+related_files:
+  - "[Getting Started](./guides/GETTING_STARTED.md)"
+  - "[User Guide](./guides/USER_GUIDE.md)"
+  - "[Architecture Decisions](./reference/ARCHITECTURE_DECISIONS.md)"
+  - "[Contributing](./reference/CONTRIBUTING.md)"
+tags: [guide/documentation, notes/index, guide/setup, guide/cli, guide/database, analysis/architecture, notes/overview, guide/etl, analysis/testing, guide/development, notes/documentation]
+---
 # TSPLIB95 ETL System - Documentation
 
 > **Complete documentation for the TSPLIB95 ETL System** - A 3-phase pipeline for converting TSPLIB95/VRP routing problems into JSON and DuckDB formats.
@@ -11,7 +33,7 @@
 *Get started and learn to use the system effectively*
 
 | Document | Purpose | Audience |
-|----------|---------|----------|
+| ---------- | --------- | ---------- |
 | **[Getting Started](guides/GETTING_STARTED.md)** | 3-step quick start guide | New users |
 | **[User Guide](guides/USER_GUIDE.md)** | Complete usage reference | All users |
 | **[Troubleshooting](guides/TROUBLESHOOTING.md)** | Issue resolution & edge cases | All users |
@@ -21,41 +43,35 @@
 *Deep technical documentation for developers and architects*
 
 | Document | Purpose | Audience |
-|----------|---------|----------|
-| **[API Reference](reference/API_REFERENCE.md)** | Complete programmatic interface | Developers |
-| **[Architecture Guide](reference/ARCHITECTURE.md)** | System design & technical decisions | Architects, developers |
+| ---------- | --------- | ---------- |
+| **[API Reference](guides/USER_GUIDE.md)** | Complete programmatic interface | Developers |
+| **[Architecture Guide](reference/ARCHITECTURE_DECISIONS.md)** | System design & technical decisions | Architects, developers |
 
 ### 🛠️ **Development** (`development/`)
 
 *Resources for contributors and maintainers*
 
 | Document | Purpose | Audience |
-|----------|---------|----------|
-| **[Developer Workflow](development/DEVELOPER_WORKFLOW.md)** | Essential development patterns | Contributors |
-| **[Development Guide](development/DEVELOPMENT_GUIDE.md)** | Complete implementation journey | Contributors |
-| **[Project Status](development/PROJECT_STATUS.md)** | Current state & roadmap | Project managers |
+| ---------- | --------- | ---------- |
+| **[Contributing](reference/CONTRIBUTING.md)** | Essential development patterns | Contributors |
 
 ### 🎨 **Visual Documentation** (`diagrams/`)
 
 *Technical diagrams and system visualizations*
 
 | Diagram | Purpose | Content |
-|---------|---------|---------|
-| `converter-architecture.mmd` | System overview | Component relationships & data flow |
-| `database-schema.mmd` | Database design | Tables, relationships, indexes |
-| `database-queries.mmd` | Query patterns | Example queries & performance tips |
-| `data-structures-algorithms.mmd` | Technical internals | Memory layout, algorithms, complexity |
-| `processing-pipeline-flow.mmd` | Workflow visualization | Complete ETL process flow |
-| `error-handling-edge-cases.mmd` | Error scenarios | Comprehensive error handling |
-| `performance-scalability.mmd` | Performance analysis | Metrics, limits, optimization |
+| --------- | --------- | --------- |
+| `converter-architecture.md` | System overview | Component relationships & data flow |
+| `database-schema.md` | Database design | Tables, relationships, indexes |
+| `database-queries.md` | Query patterns | Example queries & performance tips |
+| `data-structures-algorithms.md` | Technical internals | Memory layout, algorithms, complexity |
+| `processing-pipeline-flow.md` | Workflow visualization | Complete ETL process flow |
+| `error-handling-edge-cases.md` | Error scenarios | Comprehensive error handling |
+| `performance-scalability.md` | Performance analysis | Metrics, limits, optimization |
 
-### 📦 **External Resources** (`tsplib95_docs/`)
+### 📦 **External Resources** (`reference/tsplib95_format.md`)
 
-*Third-party documentation (TSPLIB95 library)*
-
-### 📁 **Archive** (`archive/`)
-
-*Historical documents and development artifacts*
+*TSPLIB95 format specification and reference*
 
 ---
 
@@ -69,21 +85,19 @@
 
 ### Want to Use the API?
 
-1. **[API Reference](reference/API_REFERENCE.md)** - All functions with examples
-2. **[Architecture Guide](reference/ARCHITECTURE.md)** - Understand the design
+1. **[API Reference](guides/USER_GUIDE.md)** - All functions with examples
+2. **[Architecture Guide](reference/ARCHITECTURE_DECISIONS.md)** - Understand the design
 
 ### Contributing to Development?
 
-1. **[Developer Workflow](development/DEVELOPER_WORKFLOW.md)** - Essential setup & patterns
-2. **[Development Guide](development/DEVELOPMENT_GUIDE.md)** - Complete implementation story
-3. **[Project Status](development/PROJECT_STATUS.md)** - Current state & roadmap
+1. **[Contributing](reference/CONTRIBUTING.md)** - Essential setup & patterns
 
 ### Need Visual Understanding?
 
-- **System Overview**: `diagrams/converter-architecture.mmd`
-- **Database Design**: `diagrams/database-schema.mmd`
-- **Performance**: `diagrams/performance-scalability.mmd`
-- **Error Handling**: `diagrams/error-handling-edge-cases.mmd`
+- **System Overview**: `diagrams/converter-architecture.md`
+- **Database Design**: `diagrams/database-schema.md`
+- **Performance**: `diagrams/performance-scalability.md`
+- **Error Handling**: `diagrams/error-handling-edge-cases.md`
 
 ---
 
@@ -93,7 +107,7 @@
 
 A **3-phase Extract-Transform-Load pipeline** that converts TSPLIB95 and VRP problem instances into modern, queryable formats:
 
-```
+```text
 TSPLIB Files → Parser → Transformer → [JSON + DuckDB Database]
 ```
 
@@ -108,9 +122,9 @@ TSPLIB Files → Parser → Transformer → [JSON + DuckDB Database]
 
 ### Technology Stack
 
-- **Language**: Python 3.11+
+- **Language**: python 3.11+
 - **Dependencies**: DuckDB, tsplib95 (vendored)
-- **Package Manager**: uv (modern Python packaging)
+- **Package Manager**: uv (modern python packaging)
 - **Database**: DuckDB (embedded analytics)
 - **Testing**: pytest with comprehensive coverage
 
@@ -122,16 +136,16 @@ TSPLIB Files → Parser → Transformer → [JSON + DuckDB Database]
 
 ```bash
 # Process academic datasets
-uv run converter process -i datasets_raw/problems -o datasets/
+uv run converter process -i datasets_raw/problems -o datasets_processed/
 
 # Query database for specific problem types
-duckdb datasets/db/routing.duckdb "SELECT * FROM problems WHERE type='TSP' AND dimension > 1000"
+duckdb datasets_processed/db/routing.duckdb "SELECT * FROM problems WHERE type='TSP' AND dimension > 1000"
 ```
 
-### Integration & Development  
+### Integration & Development
 
 ```python
-# Python API usage
+# python API usage
 import converter
 
 # Parse single file
@@ -154,7 +168,6 @@ uv run converter process --workers 8 --batch-size 200 --progress
 - **TSPLIB95 Specification**: See `tsplib95.pdf` in project root
 - **Academic Papers**: Research citations in code comments
 - **GitHub Repository**: Source code and issue tracking
-- **Performance Benchmarks**: See `PHASE3_TEST_RESULTS.md`
 
 ---
 
@@ -166,9 +179,9 @@ uv run converter process --workers 8 --batch-size 200 --progress
 - **Questions**: Open GitHub discussions
 - **Bug Reports**: Use GitHub issues with error details
 
-### Contributing  
+### Contributing
 
-- **Code**: Follow [Developer Workflow](development/DEVELOPER_WORKFLOW.md)
+- **Code**: Follow [Contributing](reference/CONTRIBUTING.md)
 - **Documentation**: Improve guides based on user feedback
 - **Testing**: Add test cases for edge cases
 

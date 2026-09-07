@@ -1,15 +1,30 @@
+---
+title: Database Connection & Query Guide
+description: >
+  How to connect to and query the routing DuckDB database with python, the
+  DuckDB CLI, and pandas, including database statistics, schema reference, and
+  query examples.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Updated database and JSON paths to the datasets_processed/ layout.
+related_files: []
+tags: [guide/database, guide/query, guide/python, notes/database, analysis/schema, guide/sql, guide/etl, notes/usage, analysis/statistics, guide/cli]
+---
 # Database Connection & Query Guide
 
 ## Overview
 
-The routing database (`datasets/db/routing.duckdb`) contains **232 routing problems** with complete metadata, node coordinates, and distance matrices. This guide shows how to connect and query the data.
+The routing database (`datasets_processed/db/routing.duckdb`) contains **232 routing problems** with complete metadata, node coordinates, and distance matrices. This guide shows how to connect and query the data.
 
 ## Database Statistics
 
 ### Problem Distribution
 
 | Type | Count | Dimension Range | Average Dim | Description |
-|------|-------|-----------------|-------------|-------------|
+| ------ | ------- | ----------------- | ------------- | ------------- |
 | **TSP** | 113 | 14 - 85,900 | 2,658.84 | Traveling Salesman Problems |
 | **CVRP** | 50 | 7 - 30,001 | 2,796.20 | Capacitated Vehicle Routing Problems |
 | **SOP** | 41 | 9 - 380 | 95.49 | Sequential Ordering Problems |
@@ -20,7 +35,7 @@ The routing database (`datasets/db/routing.duckdb`) contains **232 routing probl
 ### Storage Methods
 
 | Type | Total | Explicit Matrices | Coordinate-Based | Notes |
-|------|-------|-------------------|------------------|-------|
+| ------ | ------- | ------------------- | ------------------ | ------- |
 | **ATSP** | 19 | 19 | 0 | All asymmetric, require explicit matrices |
 | **CVRP** | 50 | 15 | 35 | Mixed: 15 EXPLICIT, 35 EUC_2D |
 | **SOP** | 41 | 41 | 0 | All have explicit precedence matrices |
@@ -31,7 +46,7 @@ The routing database (`datasets/db/routing.duckdb`) contains **232 routing probl
 ### Edge Weight Types
 
 | Edge Weight Type | Count | Storage Method |
-|------------------|-------|----------------|
+| ------------------ | ------- | ---------------- |
 | **EUC_2D** | 113 | Coordinates in `nodes` table |
 | **EXPLICIT** | 92 | Matrices in `edge_weight_matrices` table |
 | **GEO** | 10 | Coordinates in `nodes` table |
@@ -43,7 +58,7 @@ The routing database (`datasets/db/routing.duckdb`) contains **232 routing probl
 ### Matrix Formats
 
 | Format | Count | Dimension Range | Avg Size | Description |
-|--------|-------|-----------------|----------|-------------|
+| -------- | ------- | ----------------- | ---------- | ------------- |
 | **FULL_MATRIX** | 62 | 9 - 443 | 91.5 KB | Full n×n matrix |
 | **LOWER_DIAG_ROW** | 12 | 6 - 561 | 115.5 KB | Lower triangle with diagonal |
 | **LOWER_ROW** | 12 | 242 - 1,001 | 2,011.1 KB | Lower triangle without diagonal |
@@ -56,14 +71,14 @@ The routing database (`datasets/db/routing.duckdb`) contains **232 routing probl
 
 ## Connection Methods
 
-### Method 1: Python with DuckDB
+### Method 1: python with DuckDB
 
 ```python
 import duckdb
 import json
 
 # Connect to database
-db = duckdb.connect('datasets/db/routing.duckdb')
+db = duckdb.connect('datasets_processed/db/routing.duckdb')
 
 # Query problems
 result = db.execute("""
@@ -83,7 +98,7 @@ db.close()
 
 ```bash
 # Open database
-duckdb datasets/db/routing.duckdb
+duckdb datasets_processed/db/routing.duckdb
 
 # List tables
 SHOW TABLES;
@@ -95,13 +110,13 @@ SELECT type, COUNT(*) FROM problems GROUP BY type;
 .quit
 ```
 
-### Method 3: Python with Pandas
+### Method 3: python with Pandas
 
 ```python
 import duckdb
 import pandas as pd
 
-db = duckdb.connect('datasets/db/routing.duckdb')
+db = duckdb.connect('datasets_processed/db/routing.duckdb')
 
 # Load problems as DataFrame
 df = db.execute("SELECT * FROM problems").df()
@@ -109,7 +124,7 @@ print(df.head())
 
 # Load nodes for a specific problem
 nodes_df = db.execute("""
-    SELECT n.* 
+    SELECT n.*
     FROM nodes n
     JOIN problems p ON p.id = n.problem_id
     WHERE p.name = 'berlin52'
@@ -131,7 +146,7 @@ db.close()
 ### Table: `problems`
 
 | Column | Type | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `id` | INTEGER | Primary key |
 | `name` | VARCHAR | Problem name (e.g., "berlin52", "eil7") |
 | `type` | VARCHAR | Problem type (TSP, CVRP, ATSP, SOP, HCP) |
@@ -146,7 +161,7 @@ db.close()
 ### Table: `nodes`
 
 | Column | Type | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `id` | INTEGER | Primary key |
 | `problem_id` | INTEGER | Foreign key to `problems.id` |
 | `node_id` | INTEGER | Node number (0-based) |
@@ -157,7 +172,7 @@ db.close()
 ### Table: `edge_weight_matrices`
 
 | Column | Type | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `problem_id` | INTEGER | Foreign key to `problems.id` |
 | `dimension` | INTEGER | **Actual matrix dimension** (may differ from problem dimension) |
 | `matrix_format` | VARCHAR | Original TSPLIB format |
@@ -179,7 +194,7 @@ db.close()
 ```sql
 SELECT name, dimension, edge_weight_type
 FROM problems
-WHERE type = 'TSP' 
+WHERE type = 'TSP'
   AND edge_weight_type IN ('EUC_2D', 'GEO', 'ATT')
 ORDER BY dimension;
 ```
@@ -189,7 +204,7 @@ ORDER BY dimension;
 ### 2. Get Problem with Nodes
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.dimension,
     n.node_id,
@@ -215,7 +230,7 @@ berlin52   | 52        | 1       | 25.0   | 185.0
 ### 3. Get ATSP with Explicit Matrix
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.dimension as problem_dim,
     ew.dimension as matrix_dim,
@@ -237,13 +252,13 @@ ft53   | 53          | 53         | FULL_MATRIX   | 11,449
 ...
 ```
 
-### 4. Extract Distance Matrix as Python Array
+### 4. Extract Distance Matrix as python Array
 
 ```python
 import duckdb
 import json
 
-db = duckdb.connect('datasets/db/routing.duckdb')
+db = duckdb.connect('datasets_processed/db/routing.duckdb')
 
 # Get matrix for br17
 result = db.execute("""
@@ -255,11 +270,11 @@ result = db.execute("""
 
 if result:
     matrix = json.loads(result[0])
-    
+
     # Access distance from node 0 to node 5
     distance = matrix[0][5]
     print(f"Distance from node 0 to node 5: {distance}")
-    
+
     # Get full row for node 0
     row_0 = matrix[0]
     print(f"Node 0 to all others: {row_0}")
@@ -270,14 +285,14 @@ db.close()
 ### 5. Get VRP Problems with Customer-Only Matrices
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.dimension as total_nodes,
     ew.dimension as customers_only,
     p.capacity
 FROM problems p
 JOIN edge_weight_matrices ew ON p.id = ew.problem_id
-WHERE p.type = 'CVRP' 
+WHERE p.type = 'CVRP'
   AND ew.dimension = p.dimension - 1
 ORDER BY p.dimension;
 ```
@@ -295,7 +310,7 @@ eil31 | 31          | 30             | 6
 ### 6. Get SOP Problems (Sequential Ordering)
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.dimension,
     ew.is_symmetric,
@@ -310,7 +325,7 @@ LIMIT 5;
 ### 7. Get HCP Problems (No Matrices)
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.dimension,
     COUNT(n.id) as node_count
@@ -326,7 +341,7 @@ ORDER BY p.dimension;
 ### 8. Calculate Statistics by Problem Type
 
 ```sql
-SELECT 
+SELECT
     type,
     COUNT(*) as total_problems,
     MIN(dimension) as min_dim,
@@ -351,13 +366,13 @@ ORDER BY dimension;
 ### 10. Get Problem Summary with Nodes and Matrix Info
 
 ```sql
-SELECT 
+SELECT
     p.name,
     p.type,
     p.dimension,
     p.edge_weight_type,
     COUNT(DISTINCT n.id) as node_count,
-    CASE 
+    CASE
         WHEN ew.problem_id IS NOT NULL THEN 'Explicit Matrix'
         WHEN p.edge_weight_type IN ('EUC_2D', 'GEO', 'ATT') THEN 'Coordinates'
         ELSE 'Other'
@@ -387,7 +402,7 @@ def euclidean_distance(x1, y1, x2, y2):
 # Example: Get distance between two nodes in berlin52
 import duckdb
 
-db = duckdb.connect('datasets/db/routing.duckdb')
+db = duckdb.connect('datasets_processed/db/routing.duckdb')
 
 nodes = db.execute("""
     SELECT node_id, x, y
@@ -414,7 +429,7 @@ Distances are **pre-stored** in `edge_weight_matrices.matrix_json`:
 import duckdb
 import json
 
-db = duckdb.connect('datasets/db/routing.duckdb')
+db = duckdb.connect('datasets_processed/db/routing.duckdb')
 
 # Get matrix
 result = db.execute("""
@@ -464,7 +479,7 @@ print(f"Distance: {customer_2_to_4}")
 ### Understanding Matrix Dimensions
 
 | Problem Type | `problems.dimension` | `edge_weight_matrices.dimension` | Notes |
-|--------------|---------------------|----------------------------------|-------|
+| -------------- | --------------------- | ---------------------------------- | ------- |
 | **TSP (EXPLICIT)** | n nodes | n×n matrix | Standard: dimension matches |
 | **ATSP** | n nodes | n×n matrix | Always asymmetric |
 | **SOP** | n nodes | n×n matrix | Dimension marker stripped during parsing |
@@ -478,7 +493,7 @@ For VRP problems with `EDGE_WEIGHT_FORMAT: EXPLICIT`:
 
 ```sql
 -- Find VRP problems with customer-only matrices
-SELECT 
+SELECT
     p.name,
     p.dimension as total_nodes,
     ew.dimension as matrix_dimension,
@@ -504,10 +519,10 @@ When `difference = 1`, the matrix contains only customer-to-customer distances (
 
 ## JSON File Access
 
-All problems are also exported as JSON files in `datasets/json/`:
+All problems are also exported as JSON files in `datasets_processed/json/`:
 
 ```bash
-datasets/json/
+datasets_processed/json/
   ├── tsp/
   │   ├── berlin52.json
   │   ├── gr17.json
@@ -552,7 +567,7 @@ datasets/json/
 
 ```sql
 -- Verify all problems have nodes
-SELECT 
+SELECT
     p.type,
     COUNT(DISTINCT p.id) as total_problems,
     COUNT(DISTINCT n.problem_id) as problems_with_nodes
@@ -568,7 +583,7 @@ ORDER BY p.type;
 
 ```sql
 -- Verify EXPLICIT problems have matrices
-SELECT 
+SELECT
     p.edge_weight_type,
     COUNT(DISTINCT p.id) as total,
     COUNT(DISTINCT ew.problem_id) as with_matrix
@@ -584,7 +599,7 @@ GROUP BY p.edge_weight_type;
 
 ```sql
 -- Check for matrix dimension mismatches
-SELECT 
+SELECT
     p.name,
     p.type,
     p.dimension as problem_dim,
@@ -626,7 +641,7 @@ LIMIT 1000;
 
 ```sql
 -- DuckDB can query JSON directly
-SELECT 
+SELECT
     p.name,
     json_extract(ew.matrix_json, '$[0][5]') as dist_0_to_5
 FROM problems p
@@ -679,11 +694,11 @@ WHERE p.name = 'br17';
 ✅ **Access methods available**
 
 - DuckDB SQL queries
-- Python with DuckDB/Pandas
+- python with DuckDB/Pandas
 - JSON files for offline access
 
 ---
 
 **Generated:** October 28, 2025
-**Database:** `datasets/db/routing.duckdb`
+**Database:** `datasets_processed/db/routing.duckdb`
 **Version:** 1.0

@@ -49,12 +49,12 @@ uv run pytest tests/ -v                    # Run all 134 tests
 uv run pytest --cov=src --cov-report=term  # Coverage report
 
 # CLI usage
-uv run converter process -i datasets_raw/problems -o datasets/
+uv run converter process -i datasets_raw/problems -o datasets_processed/
 uv run converter process --workers 1 --verbose  # Debug mode
 uv run converter process --types TSP --types VRP  # Specific types
 
 # Database inspection
-duckdb datasets/db/routing.duckdb
+duckdb datasets_processed/db/routing.duckdb
   SHOW TABLES;
   SELECT type, COUNT(*) FROM problems GROUP BY type;
 ```
@@ -190,6 +190,6 @@ Memory limit per worker: 2048 MB (see `parallel.py`). Check with `psutil.Process
 
 ---
 
-**Documentation**: See `docs/reference/ARCHITECTURE.md` for design decisions, `docs/development/DEVELOPER_WORKFLOW.md` for patterns.
+**Documentation**: See `docs/reference/ARCHITECTURE_DECISIONS.md` for design decisions, `docs/reference/CONTRIBUTING.md` for patterns.
 
 **Current Status**: 134/134 tests passing, 63% coverage. Core pipeline production-ready. VRP extensions and advanced analytics partially implemented.

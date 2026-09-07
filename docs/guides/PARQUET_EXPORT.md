@@ -1,3 +1,19 @@
+---
+title: Parquet Export Guide
+description: >
+  How to export DuckDB tables to Apache Parquet with the converter CLI and
+  Python API: codec choices, integration with pandas/polars/DuckDB, and
+  performance notes.
+created: 2026-08-25
+modifications:
+  - date_modified: 2026-08-25
+    modifications:
+      - description: >
+          Updated database and output paths to the datasets_processed/ layout
+          and repointed the archive output example.
+related_files: []
+tags: [guide/export, guide/parquet, guide/database, guide/cli, analysis/performance, guide/etl, notes/data-formats, analysis/storage, guide/python, benchmark/performance, analysis/benchmarking]
+---
 # Parquet Export Guide
 
 ## Overview
@@ -9,7 +25,7 @@ The TSPLIB95 ETL Converter supports exporting database tables to **Apache Parque
 ### Advantages
 
 | Feature | Benefit |
-|---------|---------|
+| --------- | --------- |
 | **Columnar Storage** | Efficient compression and fast column-based queries |
 | **Schema Preservation** | Maintains data types and metadata |
 | **Compression** | 20-70% smaller than JSON (default: Snappy) |
@@ -21,7 +37,7 @@ The TSPLIB95 ETL Converter supports exporting database tables to **Apache Parque
 Based on 113 TSP problems dataset:
 
 | Format | Size | Compression Ratio | Best For |
-|--------|------|-------------------|----------|
+| -------- | ------ | ------------------- | ---------- |
 | **JSON** (raw) | 8.14 MB | 1.0x (baseline) | Human-readable, web APIs |
 | **Parquet** (snappy) | 6.27 MB | 0.77x (23% smaller) | General purpose, balanced speed/size |
 | **Parquet** (gzip) | ~5.5 MB | 0.68x (32% smaller) | Network transfer, storage optimization |
@@ -38,8 +54,8 @@ uv run converter export-parquet
 
 # Specify database and output directory
 uv run converter export-parquet \
-  -d datasets/db/routing.duckdb \
-  -o datasets/parquet
+  -d datasets_processed/db/routing.duckdb \
+  -o datasets_processed/parquet
 
 # Export specific tables only
 uv run converter export-parquet \
@@ -56,44 +72,44 @@ uv run converter export-parquet -c uncompressed  # Fastest reads
 uv run converter export-parquet --no-info
 ```
 
-### Python API
+### python API
 
 ```python
 from converter.output.parquet_writer import ParquetWriter, export_database_to_parquet
 
 # Quick export (all tables)
 files = export_database_to_parquet(
-    db_path="datasets/db/routing.duckdb",
-    output_dir="datasets/parquet",
+    db_path="datasets_processed/db/routing.duckdb",
+    output_dir="datasets_processed/parquet",
     compression="snappy"
 )
 
 # Advanced usage
 writer = ParquetWriter(
-    output_dir="datasets/parquet",
+    output_dir="datasets_processed/parquet",
     compression="zstd"  # Maximum compression
 )
 
 # Export all tables
 files = writer.export_from_database(
-    db_path="datasets/db/routing.duckdb"
+    db_path="datasets_processed/db/routing.duckdb"
 )
 
 # Export specific tables
 files = writer.export_from_database(
-    db_path="datasets/db/routing.duckdb",
+    db_path="datasets_processed/db/routing.duckdb",
     tables=["problems", "nodes"]
 )
 
 # Export single table with custom filename
 output_file = writer.export_table(
-    db_path="datasets/db/routing.duckdb",
+    db_path="datasets_processed/db/routing.duckdb",
     table_name="problems",
     output_filename="tsp_problems.parquet"
 )
 
 # Get Parquet file metadata
-info = writer.get_parquet_info("datasets/parquet/problems.parquet")
+info = writer.get_parquet_info("datasets_processed/parquet/problems.parquet")
 print(f"Rows: {info['row_count']}, Columns: {info['column_count']}")
 print(f"Size: {info['size_mb']} MB, Compression: {info['compression']}")
 ```
@@ -106,17 +122,17 @@ print(f"Size: {info['size_mb']} MB, Compression: {info['compression']}")
 import pandas as pd
 
 # Read single table
-problems_df = pd.read_parquet('datasets/parquet/problems.parquet')
+problems_df = pd.read_parquet('datasets_processed/parquet/problems.parquet')
 
 # Read specific columns (columnar advantage!)
 problems_df = pd.read_parquet(
-    'datasets/parquet/problems.parquet',
+    'datasets_processed/parquet/problems.parquet',
     columns=['name', 'type', 'dimension']
 )
 
 # Filter while reading (predicate pushdown)
 problems_df = pd.read_parquet(
-    'datasets/parquet/problems.parquet',
+    'datasets_processed/parquet/problems.parquet',
     filters=[('type', '=', 'TSP'), ('dimension', '<', 200)]
 )
 ```
@@ -127,7 +143,7 @@ problems_df = pd.read_parquet(
 import polars as pl
 
 # Read entire table (lazy evaluation)
-problems_lf = pl.scan_parquet('datasets/parquet/problems.parquet')
+problems_lf = pl.scan_parquet('datasets_processed/parquet/problems.parquet')
 
 # Filter and select
 result = (
@@ -139,7 +155,7 @@ result = (
 )
 
 # Eager read
-problems_df = pl.read_parquet('datasets/parquet/problems.parquet')
+problems_df = pl.read_parquet('datasets_processed/parquet/problems.parquet')
 ```
 
 ### Using DuckDB (Zero-Copy, Most Efficient)
@@ -152,21 +168,21 @@ conn = duckdb.connect(':memory:')
 
 result = conn.execute("""
     SELECT name, type, dimension
-    FROM 'datasets/parquet/problems.parquet'
+    FROM 'datasets_processed/parquet/problems.parquet'
     WHERE type = 'TSP' AND dimension BETWEEN 100 AND 200
     ORDER BY dimension
 """).fetchall()
 
 # Convert to DataFrame
 df = conn.execute("""
-    SELECT * FROM 'datasets/parquet/problems.parquet'
+    SELECT * FROM 'datasets_processed/parquet/problems.parquet'
 """).df()
 
 # Join multiple Parquet files
 result = conn.execute("""
     SELECT p.name, p.dimension, COUNT(n.node_id) as node_count
-    FROM 'datasets/parquet/problems.parquet' p
-    LEFT JOIN 'datasets/parquet/nodes.parquet' n 
+    FROM 'datasets_processed/parquet/problems.parquet' p
+    LEFT JOIN 'datasets_processed/parquet/nodes.parquet' n
         ON p.id = n.problem_id
     GROUP BY p.name, p.dimension
 """).df()
@@ -178,19 +194,19 @@ result = conn.execute("""
 import pyarrow.parquet as pq
 
 # Read Parquet file
-table = pq.read_table('datasets/parquet/problems.parquet')
+table = pq.read_table('datasets_processed/parquet/problems.parquet')
 
 # Convert to pandas
 df = table.to_pandas()
 
 # Read with column selection
 table = pq.read_table(
-    'datasets/parquet/problems.parquet',
+    'datasets_processed/parquet/problems.parquet',
     columns=['name', 'type', 'dimension']
 )
 
 # Read metadata only
-metadata = pq.read_metadata('datasets/parquet/problems.parquet')
+metadata = pq.read_metadata('datasets_processed/parquet/problems.parquet')
 print(f"Rows: {metadata.num_rows}")
 print(f"Columns: {metadata.num_columns}")
 ```
@@ -205,8 +221,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Load routing problem features
-problems = pd.read_parquet('datasets/parquet/problems.parquet')
-nodes = pd.read_parquet('datasets/parquet/nodes.parquet')
+problems = pd.read_parquet('datasets_processed/parquet/problems.parquet')
+nodes = pd.read_parquet('datasets_processed/parquet/nodes.parquet')
 
 # Feature engineering
 features = problems[['dimension', 'edge_weight_type']].copy()
@@ -226,11 +242,11 @@ conn = duckdb.connect(':memory:')
 
 # Aggregate statistics
 stats = conn.execute("""
-    SELECT type, 
+    SELECT type,
            COUNT(*) as count,
            AVG(dimension) as avg_dim,
            MAX(dimension) as max_dim
-    FROM 'datasets/parquet/problems.parquet'
+    FROM 'datasets_processed/parquet/problems.parquet'
     GROUP BY type
 """).df()
 
@@ -247,7 +263,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder.appName("TSPLIB").getOrCreate()
 
 # Read Parquet (distributed)
-problems_df = spark.read.parquet('datasets/parquet/problems.parquet')
+problems_df = spark.read.parquet('datasets_processed/parquet/problems.parquet')
 
 # Query with Spark SQL
 problems_df.createOrReplaceTempView("problems")
@@ -307,11 +323,11 @@ result = (
 ```python
 import duckdb
 
-# ❌ Slower: Load to Python then query
+# ❌ Slower: Load to python then query
 df = pd.read_parquet('problems.parquet')
 result = df[df['dimension'] < 100]
 
-# ✅ Fastest: Query Parquet directly (no Python copy)
+# ✅ Fastest: Query Parquet directly (no python copy)
 conn = duckdb.connect(':memory:')
 result = conn.execute("""
     SELECT * FROM 'problems.parquet' WHERE dimension < 100
@@ -323,7 +339,7 @@ result = conn.execute("""
 ### When to Use Each Codec
 
 | Codec | Compression Ratio | Speed | Best For |
-|-------|------------------|-------|----------|
+| ------- | ------------------ | ------- | ---------- |
 | **snappy** (default) | ~0.77x | ⚡⚡⚡ Fast | General purpose, interactive analysis |
 | **gzip** | ~0.68x | ⚡⚡ Moderate | Network transfer, cloud storage |
 | **zstd** | ~0.55x | ⚡ Slower | Long-term archival, maximum space savings |
@@ -333,7 +349,7 @@ result = conn.execute("""
 
 ```bash
 # For archival or cloud storage
-uv run converter export-parquet -c zstd -o archive/
+uv run converter export-parquet -c zstd -o datasets_processed/parquet/
 
 # Result: ~4.5 MB (vs 8.14 MB JSON, 45% savings)
 ```
@@ -348,7 +364,7 @@ import pandas as pd
 import duckdb
 
 # Quick load
-problems = pd.read_parquet('datasets/parquet/problems.parquet')
+problems = pd.read_parquet('datasets_processed/parquet/problems.parquet')
 
 # Display
 problems.head()
@@ -356,7 +372,7 @@ problems.head()
 # SQL queries
 conn = duckdb.connect(':memory:')
 conn.execute("""
-    SELECT * FROM 'datasets/parquet/problems.parquet' 
+    SELECT * FROM 'datasets_processed/parquet/problems.parquet'
     WHERE type = 'TSP'
 """).df()
 ```
@@ -370,7 +386,7 @@ import pandas as pd
 
 @st.cache_data
 def load_data():
-    return pd.read_parquet('datasets/parquet/problems.parquet')
+    return pd.read_parquet('datasets_processed/parquet/problems.parquet')
 
 df = load_data()
 st.dataframe(df)
@@ -385,7 +401,7 @@ import pandas as pd
 
 app = FastAPI()
 
-problems_df = pd.read_parquet('datasets/parquet/problems.parquet')
+problems_df = pd.read_parquet('datasets_processed/parquet/problems.parquet')
 
 @app.get("/problems/{problem_type}")
 def get_problems(problem_type: str):
@@ -398,15 +414,15 @@ def get_problems(problem_type: str):
 ### File Not Found
 
 ```python
-# Error: FileNotFoundError: datasets/parquet/problems.parquet
+# Error: FileNotFoundError: datasets_processed/parquet/problems.parquet
 
 # Solution 1: Export first
 from converter.output.parquet_writer import export_database_to_parquet
-export_database_to_parquet('datasets/db/routing.duckdb')
+export_database_to_parquet('datasets_processed/db/routing.duckdb')
 
 # Solution 2: Check path
 from pathlib import Path
-print(Path('datasets/parquet').exists())  # Should be True
+print(Path('datasets_processed/parquet').exists())  # Should be True
 ```
 
 ### Large Memory Usage
