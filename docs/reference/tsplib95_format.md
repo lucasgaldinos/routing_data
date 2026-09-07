@@ -551,36 +551,35 @@ Table 2 lists the ATSP instances (in directory `atsp`) together with their optim
 
 Table 2:
 
-```
-Name   #cities  Type    Optimum
-br17   17       MATRIX  39
-ft53   53       MATRIX  6905
-ft70   70       MATRIX  38673
-ftv33  34       MATRIX  1286
-ftv35  36       MATRIX  1473
-ftv38  39       MATRIX  1530
-ftv44  45       MATRIX  1613
-ftv47  48       MATRIX  1776
-ftv55  56       MATRIX  1608
-ftv64  65       MATRIX  1839
-ftv70  71       MATRIX  1950
-ftv90  91       MATRIX  1579
-ftv100 101      MATRIX  1788
-ftv110 111      MATRIX  1958
-ftv120 121      MATRIX  2166
-ftv130 131      MATRIX  2307
-ftv140 141      MATRIX  2420
-ftv150 151      MATRIX  2611
-ftv160 161      MATRIX  2683
-ftv170 171      MATRIX  2755
-kro124 100      MATRIX  36230
-p43    43       MATRIX  5620
-rbg323 323      MATRIX  1326
-rbg358 358      MATRIX  1163
-rbg403 403      MATRIX  2465
-rbg443 443      MATRIX  2720
-ry48p  48       MATRIX  14422
-```
+| Name | #cities | Type | Optimum |
+| --- | --- | --- | --- |
+| br17 | 17 | MATRIX | 39 |
+| ft53 | 53 | MATRIX | 6905 |
+| ft70 | 70 | MATRIX | 38673 |
+| ftv33 | 34 | MATRIX | 1286 |
+| ftv35 | 36 | MATRIX | 1473 |
+| ftv38 | 39 | MATRIX | 1530 |
+| ftv44 | 45 | MATRIX | 1613 |
+| ftv47 | 48 | MATRIX | 1776 |
+| ftv55 | 56 | MATRIX | 1608 |
+| ftv64 | 65 | MATRIX | 1839 |
+| ftv70 | 71 | MATRIX | 1950 |
+| ftv90 | 91 | MATRIX | 1579 |
+| ftv100 | 101 | MATRIX | 1788 |
+| ftv110 | 111 | MATRIX | 1958 |
+| ftv120 | 121 | MATRIX | 2166 |
+| ftv130 | 131 | MATRIX | 2307 |
+| ftv140 | 141 | MATRIX | 2420 |
+| ftv150 | 151 | MATRIX | 2611 |
+| ftv160 | 161 | MATRIX | 2683 |
+| ftv170 | 171 | MATRIX | 2755 |
+| kro124 | 100 | MATRIX | 36230 |
+| p43 | 43 | MATRIX | 5620 |
+| rbg323 | 323 | MATRIX | 1326 |
+| rbg358 | 358 | MATRIX | 1163 |
+| rbg403 | 403 | MATRIX | 2465 |
+| rbg443 | 443 | MATRIX | 2720 |
+| ry48p | 48 | MATRIX | 14422 |
 
 ### 3.4 Sequential ordering problems
 
@@ -592,56 +591,56 @@ Table 3 lists the SOP instances (in directory `sop`) together with their known l
 
 Table 3:
 
-```
-Name        #nodes  #prec  Type    Bounds
-ESC07       96      -      MATRIX  2125
-ESC11       133     -      MATRIX  2075
-ESC12       147     -      MATRIX  1675
-ESC25       279     -      MATRIX  1681
-ESC47       491     10     MATRIX  1288
-ESC63       659     95     MATRIX  62
-ESC78       807     77     MATRIX  18230
-br17.10     17      10     MATRIX  55
-br17.12     17      12     MATRIX  55
-ft53.1      54      12     MATRIX  [7438,7570]
-ft53.2      54      25     MATRIX  [7630,8335]
-ft53.3      54      48     MATRIX  [9473,10935]
-ft53.4      56      63     MATRIX  14425
-ft70.1      71      17     MATRIX  39313
-ft70.2      71      35     MATRIX  [39739,41778]
-ft70.3      71      68     MATRIX  [41305,44732]
-ft70.4      71      86     MATRIX  [52269,53882]
-kro124p.1   101     25     MATRIX  [37722,42845]
-kro124p.2   101     49     MATRIX  [38534,45848]
-kro124p.3   101     97     MATRIX  [40967,55649]
-kro124p.4   101     131    MATRIX  [64858,80753]
-p43.1       44      9      MATRIX  27990
-p43.2       44      20     MATRIX  [28175,28330]
-p43.3       44      37     MATRIX  [28366,28680]
-p43.4       44      50     MATRIX  [69569,82960]
-prob.42     42      10     MATRIX  243
-prob.100    100     41     MATRIX  [1024,1385]
-rbg048a     50      192    MATRIX  351
-rbg050c     52      256    MATRIX  467
-rbg109a     111     622    MATRIX  1038
-rbg150a     152     952    MATRIX  [1748,1750]
-rbg174a     176     1113   MATRIX  2053
-rbg253a     255     1721   MATRIX  [2928,2987]
-rbg323a     325     2412   MATRIX  [3136,3221]
-rbg341a     343     2542   MATRIX  [2543,2854]
-rbg358a     360     3239   MATRIX  [2518,2758]
-rbg378a     380     3069   MATRIX  [2761,3142]
-ry48p.1     49      11     MATRIX  [15220,15935]
-ry48p.2     49      23     MATRIX  [15524,17071]
-ry48p.3     49      42     MATRIX  [18156,20051]
-ry48p.4     49      58     MATRIX  [29967,31446]
-```
+| Name    |    #nodes |  #prec |  Type |    Bounds |
+| --- | --- | --- | --- |
+| ESC07    |   96 |      - |      MATRIX |  2125 |
+| ESC11    |   133 |     - |      MATRIX |  2075 |
+| ESC12    |   147 |     - |      MATRIX |  1675 |
+| ESC25    |   279 |     - |      MATRIX |  1681 |
+| ESC47    |   491 |     10 |     MATRIX |  1288 |
+| ESC63    |   659 |     95 |     MATRIX |  62 |
+| ESC78    |   807 |     77 |     MATRIX |  18230 |
+| br17.10 |    17 |      10 |     MATRIX |  55 |
+| br17.12 |    17 |      12 |     MATRIX |  55 |
+| ft53.1  |    54 |      12 |     MATRIX |  [7438,7570] |
+| ft53.2  |    54 |      25 |     MATRIX |  [7630,8335] |
+| ft53.3  |    54 |      48 |     MATRIX |  [9473,10935] |
+| ft53.4  |    56 |      63 |     MATRIX |  14425 |
+| ft70.1  |    71 |      17 |     MATRIX |  39313 |
+| ft70.2  |    71 |      35 |     MATRIX |  [39739,41778] |
+| ft70.3  |    71 |      68 |     MATRIX |  [41305,44732] |
+| ft70.4  |    71 |      86 |     MATRIX |  [52269,53882] |
+| kro124p.1  | 101 |     25 |     MATRIX |  [37722,42845] |
+| kro124p.2  | 101 |     49 |     MATRIX |  [38534,45848] |
+| kro124p.3  | 101 |     97 |     MATRIX |  [40967,55649] |
+| kro124p.4  | 101 |     131 |    MATRIX |  [64858,80753] |
+| p43.1  |     44 |      9 |      MATRIX |  27990 |
+| p43.2  |     44 |      20 |     MATRIX |  [28175,28330] |
+| p43.3  |     44 |      37 |     MATRIX |  [28366,28680] |
+| p43.4  |     44 |      50 |     MATRIX |  [69569,82960] |
+| prob.42 |    42 |      10 |     MATRIX |  243 |
+| prob.100|    100 |     41 |     MATRIX |  [1024,1385] |
+| rbg048a    | 50 |      192 |    MATRIX |  351 |
+| rbg050c    | 52 |      256 |    MATRIX |  467 |
+| rbg109a    | 111 |     622 |    MATRIX |  1038 |
+| rbg150a    | 152 |     952 |    MATRIX |  [1748,1750] |
+| rbg174a    | 176 |     1113 |   MATRIX |  2053 |
+| rbg253a    | 255 |     1721 |   MATRIX |  [2928,2987] |
+| rbg323a    | 325 |     2412 |   MATRIX |  [3136,3221] |
+| rbg341a    | 343 |     2542 |   MATRIX |  [2543,2854] |
+| rbg358a    | 360 |     3239 |   MATRIX |  [2518,2758] |
+| rbg378a    | 380 |     3069 |   MATRIX |  [2761,3142] |
+| ry48p.1  |   49 |      11 |     MATRIX |  [15220,15935] |
+| ry48p.2  |   49 |      23 |     MATRIX |  [15524,17071] |
+| ry48p.3  |   49 |      42 |     MATRIX |  [18156,20051] |
+| ry48p.4  |   49 |      58 |     MATRIX |  [29967,31446] |
 
 ### 3.5 Capacitated vehicle routing problems
 
 Data for capacitated vehicle routing problems is contained in the directory `vrp`. Data files have suffix `.vrp`. At present, we have the data files
 
 ```
+
 att48.vrp
 eil7.vrp
 eil13.vrp
@@ -658,6 +657,7 @@ eilD76.vrp
 eilA101.vrp
 eilB101.vrp
 gil262.vrp
+
 ```
 
 Various problems can be defined on these data sets, e.g., depending on whether the number of vehicles is fixed, so we do not list optimal solutions here. Some values are given in the data files themselves.
@@ -678,6 +678,7 @@ In addition to the data and solution files, the following special files are cont
 2. Some data sets are referred to by different names in the literature. Below we give the corresponding names used in [3] and [2].
 
 ```
+
 TSPLIB     [3]     [2]          TSPLIB     [3]     [2]
 att48      ATT048  -            att532     ATT532  -
 dantzig42  -       42           eil101     EIL10   -
@@ -699,6 +700,7 @@ pr152      TK152   -            pr226      TK226   -
 pr2392     TK2392  -            pr264      TK264   -
 pr299      TK299   -            pr439      TK439   -
 pr76       TK076   -            st70       KRO070  70
+
 ```
 
 1. Some vehicle routing problems are also available in a TSP version. Here the depots are just treated as normal nodes. The problem `gil262` originally contained two identical nodes, of which one was eliminated.

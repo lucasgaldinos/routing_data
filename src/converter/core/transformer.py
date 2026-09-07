@@ -1,12 +1,14 @@
 """Data transformation for TSPLIB converter."""
 
-from typing import Dict, Any, List, Optional
+import itertools
 import logging
 import re
-import itertools
 from pathlib import Path
+from tempfile import _TemporaryFileWrapper
+from typing import Any
 
 from tsplib_parser import matrix
+
 
 class DataTransformer:
     """
@@ -19,7 +21,7 @@ class DataTransformer:
     - Index normalization (1-based to 0-based)
     """
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: logging.Logger | None = None):
         """
         Initialize transformer.
 
@@ -30,9 +32,9 @@ class DataTransformer:
 
     def transform_problem(
         self,
-        problem_data: Dict[str, Any],
-        file_info: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
+        problem_data: dict[str, Any],
+        file_info: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """
         Transform parsed problem data for storage.
 
@@ -60,6 +62,15 @@ class DataTransformer:
         # Ensure all nodes have required fields
         normalized_nodes = self._normalize_nodes(nodes)
 
+        # Schema v2 array-column payload (Decision 3). coords / display_coords
+        # derive from the normalized nodes; demands / depots come from the
+        # parser, which exposes them even for coordinate-less problems (e.g.
+        # EXPLICIT CVRP — see parser._extract_nodes).
+        coords: list[list[float]] | None = self._build_coords(nodes=normalized_nodes)
+        display_coords: list[list[float]] | None = self._build_display_coords(nodes=normalized_nodes)
+        demands = problem_data.get('demands', [])
+        depots = problem_data.get('depots', [])
+
         # Process edge weights if present (EXPLICIT problems)
         edge_weight_matrix = None
         if 'edge_weights' in problem_meta and problem_meta['edge_weights']:
@@ -75,10 +86,10 @@ class DataTransformer:
                     f"{len(edge_weight_matrix[0])} matrix"
                 )
             except Exception as e:
-                self.logger.warning(f"Failed to convert edge weights: {e}")
+                self.logger.warning(msg=f"Failed to convert edge weights: {e}")
                 # Re-raise in debug mode for troubleshooting
                 import traceback
-                self.logger.debug(traceback.format_exc())
+                self.logger.debug(msg=traceback.format_exc())
                 edge_weight_matrix = None
 
             # Remove raw edge_weights from problem_meta (don't store parsed data)
@@ -90,13 +101,17 @@ class DataTransformer:
         fixed_edges: Any | None = problem_data.get('fixed_edges')
 
         # Build final structure
-        result = {
+        result: dict[str, Any] = {
             'problem_data': self._enrich_problem_data(problem_meta, metadata),
             'nodes': normalized_nodes,
             'tours': tours,
             'metadata': metadata,
             'edges': edges,
-            'fixed_edges': fixed_edges
+            'fixed_edges': fixed_edges,
+            'coords': coords,
+            'display_coords': display_coords,
+            'demands': demands,
+            'depots': depots,
         }
 
         # Add edge weight matrix if converted successfully
@@ -105,15 +120,52 @@ class DataTransformer:
 
         return result
 
-    def _normalize_nodes(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_coords(
+        self, nodes: list[dict[str, Any]]
+    ) -> list[list[float]] | None:
+        """Build the ``coords`` array column from normalized nodes.
+
+        Returns ``None`` when the problem has no coordinates (EXPLICIT weight problems — the matrix row in ``edge_weight_matrices`` holds the data, so ``coords`` stays NULL). Nodes are emitted in 0-based ``node_id`` order; 2D and 3D coordinates are preserved.
+        """
+        coord_rows: list[list[float]] = []
+        for node in sorted(nodes, key=lambda n: n.get('node_id', 0)):
+            x: Any | None = node.get('x')
+            y: Any | None = node.get('y')
+            if x is None or y is None:
+                return None
+            row: list[float] = [x, y]
+            z: Any | None = node.get('z')
+            if z is not None:
+                row.append(z)
+            coord_rows.append(row)
+        return coord_rows or None
+
+    def _build_display_coords(
+        self, nodes: list[dict[str, Any]]
+    ) -> list[list[float]] | None:
+        """Build the ``display_coords`` array column from normalized nodes.
+
+        Returns ``None`` when no node carries display coordinates (the common
+        case — ``DISPLAY_DATA_SECTION`` is optional in TSPLIB).
+        """
+        display_rows: list[list[float]] = []
+        for node in sorted(nodes, key=lambda n: n.get('node_id', 0)):
+            dx: Any | None = node.get('display_x')
+            dy: Any | None = node.get('display_y')
+            if dx is None or dy is None:
+                continue
+            display_rows.append([dx, dy])
+        return display_rows or None
+
+    def _normalize_nodes(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Normalize node data with consistent field structure.
 
         Args:
-            nodes: List of node dictionaries
+            nodes: list of node dictionaries
 
         Returns:
-            List of normalized node dictionaries
+            list of normalized node dictionaries
         """
         return [
             {
@@ -134,12 +186,12 @@ class DataTransformer:
         edge_weights,
         edge_weight_format: str,
         dimension: int,
-        problem_type: Optional[str] = None
-    ) -> List[List[float]]:
+        problem_type: str | None = None
+    ) -> list[list[float]]:
         """Convert edge weights to full 2D matrix.
 
         Args:
-            edge_weights: Matrix object or List[List[float]] from parser
+            edge_weights: Matrix object or list[list[float]] from parser
             edge_weight_format: Matrix format (FULL_MATRIX, LOWER_DIAG_ROW, etc.)
             dimension: Problem dimension (number of nodes)
             problem_type: Problem type (e.g. 'CVRP', 'VRP'). When set and the
@@ -163,11 +215,11 @@ class DataTransformer:
             )
             return self._expand_vrp_matrix(matrix_2d, problem_type, dimension)
 
-        # Otherwise, handle List[List] (legacy path)
-        weights = list(itertools.chain(*edge_weights))
+        # Otherwise, handle list[list] (legacy path)
+        weights: list[Any] = list(itertools.chain(*edge_weights))
 
         self.logger.debug(
-            f"Converting edge weights: format={edge_weight_format}, "
+            msg=f"Converting edge weights: format={edge_weight_format}, "
             f"dimension={dimension}, total_weights={len(weights)}"
         )
 
@@ -197,10 +249,10 @@ class DataTransformer:
 
     def _expand_vrp_matrix(
         self,
-        matrix_2d: List[List[float]],
-        problem_type: Optional[str],
+        matrix_2d: list[list[float]],
+        problem_type: str | None,
         dimension: int
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Expand a customer-only (n-1)×(n-1) VRP matrix to n×n.
 
@@ -213,7 +265,7 @@ class DataTransformer:
             and len(matrix_2d) == dimension - 1
         ):
             n: int = dimension
-            expanded: List[List[float]] = [[0.0] * n for _ in range(n)]
+            expanded: list[list[float]] = [[0.0] * n for _ in range(n)]
             for i, row in enumerate(iterable=matrix_2d):
                 for j, val in enumerate(iterable=row):
                     expanded[i + 1][j + 1] = val
@@ -227,9 +279,9 @@ class DataTransformer:
 
     def _enrich_problem_data(
         self,
-        problem_meta: Dict[str, Any],
-        metadata: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        problem_meta: dict[str, Any],
+        metadata: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Enrich problem metadata with additional information.
 
@@ -240,7 +292,7 @@ class DataTransformer:
         Returns:
             Enriched problem metadata
         """
-        enriched = problem_meta.copy()
+        enriched: dict[str, Any] = problem_meta.copy()
 
         # Add file path and size from metadata
         if 'file_path' in metadata:
@@ -250,7 +302,7 @@ class DataTransformer:
 
         return enriched
 
-    def to_json_format(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def to_json_format(self, data: dict[str, Any]) -> dict[str, Any]:
         """
         Convert data to flattened JSON format.
 
@@ -261,7 +313,7 @@ class DataTransformer:
             Data in JSON-friendly format
         """
         # Create flattened structure for JSON - NO EDGES
-        json_data = {
+        json_data: dict[str, Any] = {
             'problem': data.get('problem_data', {}),
             'nodes': data.get('nodes', []),
             'tours': data.get('tours', []),
@@ -270,7 +322,7 @@ class DataTransformer:
 
         return json_data
 
-    def validate_transformation(self, data: Dict[str, Any]) -> List[str]:
+    def validate_transformation(self, data: dict[str, Any]) -> list[str]:
         """
         Validate transformed data.
 
@@ -278,9 +330,9 @@ class DataTransformer:
             data: Transformed data
 
         Returns:
-            List of validation error messages (empty if valid)
+            list of validation error messages (empty if valid)
         """
-        errors = []
+        errors: list[Any] = []
 
         # Check required fields in problem_data using comprehension
         problem_data = data.get('problem_data', {})
@@ -305,7 +357,7 @@ class DataTransformer:
 
         return errors
 
-    def find_solution_file(self, problem_file_path: str) -> Optional[str]:
+    def find_solution_file(self, problem_file_path: str) -> str | None:
         """
         Find associated solution file (.opt.tour or .sol) for a problem file.
 
@@ -343,8 +395,8 @@ class DataTransformer:
         self,
         solution_file_path: str,
         parser,
-        problem_dimension: Optional[int] = None
-    ) -> Optional[Dict[str, Any]]:
+        problem_dimension: int | None = None
+    ) -> dict[str, Any] | None:
         """
         Parse solution file (.opt.tour or .sol) and extract solution data.
 
@@ -356,7 +408,7 @@ class DataTransformer:
                 (Decision #6).
 
         Returns:
-            Dictionary with solution data (routes as list of lists) or None if parsing fails
+            dictionary with solution data (routes as list of lists) or None if parsing fails
         """
         solution_path = Path(solution_file_path)
 
@@ -375,8 +427,8 @@ class DataTransformer:
         self,
         tour_file_path: str,
         parser,
-        problem_dimension: Optional[int] = None
-    ) -> Optional[Dict[str, Any]]:
+        problem_dimension: int | None = None
+    ) -> dict[str, Any] | None:
         """
         Parse .opt.tour file (TSPLIB single-tour format).
 
@@ -388,31 +440,31 @@ class DataTransformer:
                 (Decision #6, e.g. rd100.opt.tour).
 
         Returns:
-            Dictionary with routes (as [[tour]]) or None
+            dictionary with routes (as [[tour]]) or None
         """
         try:
             # Decision #6: if the tour file lacks a DIMENSION line, pre-inject
             # the linked problem's dimension and parse from a temp file. Keeps
             # parser.parse_file/validate_problem behavior unchanged.
             tour_path = Path(tour_file_path)
-            raw_text = tour_path.read_text(encoding='utf-8', errors='latin-1')
-            has_dimension = re.search(
-                r'^\s*DIMENSION\s*:', raw_text, flags=re.MULTILINE
+            raw_text: str = tour_path.read_text(encoding='utf-8', errors='latin-1')
+            has_dimension: re.Match[str] | None = re.search(
+                pattern=r'^\s*DIMENSION\s*:', string=raw_text, flags=re.MULTILINE
             )
             parse_target = tour_file_path
             temp_path = None
             if not has_dimension and problem_dimension is not None:
                 import tempfile
                 injected_text = f"DIMENSION : {problem_dimension}\n{raw_text}"
-                tmp = tempfile.NamedTemporaryFile(
+                tmp: _TemporaryFileWrapper = tempfile.NamedTemporaryFile(
                     mode='w', suffix='.tour', delete=False, encoding='utf-8'
                 )
                 tmp.write(injected_text)
                 tmp.close()
-                temp_path = tmp.name
-                parse_target = temp_path
+                temp_path: str = tmp.name
+                parse_target: str = temp_path
                 self.logger.debug(
-                    f"Pre-injected DIMENSION : {problem_dimension} into "
+                    msg=f"Pre-injected DIMENSION : {problem_dimension} into "
                     f"{tour_file_path}"
                 )
 
@@ -433,7 +485,7 @@ class DataTransformer:
 
             # Extract cost from comment if available
             comment = problem_data.get('comment', '')
-            cost = self._extract_cost_from_comment(comment)
+            cost: float | None = self._extract_cost_from_comment(comment)
 
             # Get first tour - tours is list of dicts with 'tour_id' and 'nodes'
             first_tour = tours[0] if tours else {}
@@ -442,23 +494,23 @@ class DataTransformer:
             # Note: parser.parse_file() already returns 0-based node indices
             # (see _extract_tours in parser.py), so no re-conversion is needed here.
             # Wrap single tour in list to match multi-route format: [[tour]]
-            routes = [tour_nodes] if tour_nodes else []
+            routes: list[Any] = [tour_nodes] if tour_nodes else []
 
-            solution_data = {
+            solution_data: dict[str,Any] = {
                 'name': problem_data.get('name'),
                 'type': problem_data.get('type'),
                 'cost': cost,
                 'routes': routes
             }
 
-            self.logger.info(f"Parsed .opt.tour: {len(tour_nodes)} nodes, cost={cost}")
+            self.logger.info(msg=f"Parsed .opt.tour: {len(tour_nodes)} nodes, cost={cost}")
             return solution_data
 
         except Exception as e:
-            self.logger.error(f"Failed to parse .opt.tour file {tour_file_path}: {e}")
+            self.logger.error(msg=f"Failed to parse .opt.tour file {tour_file_path}: {e}")
             return None
 
-    def _parse_sol_file(self, sol_file_path: str) -> Optional[Dict[str, Any]]:
+    def _parse_sol_file(self, sol_file_path: str) -> dict[str, Any] | None:
         """
         Parse .sol file (CVRPLIB multi-route format).
 
@@ -472,10 +524,10 @@ class DataTransformer:
             sol_file_path: Path to .sol file
 
         Returns:
-            Dictionary with routes (as [[route1], [route2], ...]) or None
+            dictionary with routes (as [[route1], [route2], ...]) or None
         """
         try:
-            with open(sol_file_path, 'r') as f:
+            with open(sol_file_path) as f:
                 content = f.read()
 
             # Extract all routes using regex
@@ -514,7 +566,7 @@ class DataTransformer:
             self.logger.error(f"Failed to parse .sol file {sol_file_path}: {e}")
             return None
 
-    def _extract_cost_from_comment(self, comment: str) -> Optional[float]:
+    def _extract_cost_from_comment(self, comment: str) -> float | None:
         """
         Extract cost from TOUR comment field.
 

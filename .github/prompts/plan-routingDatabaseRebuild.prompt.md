@@ -7,7 +7,7 @@ description: >
   vocabulary, temp-id mapping, NotFound semantics) into 5W2H tasks grouped into
   five context-shared batches.
 created: 2026-08-26
-status: draft
+status: final
 author:
   - "[[Lucas Galdino]]"
 type: guide
@@ -41,8 +41,19 @@ modifications:
           stored names keep the file-declared NAME unless a same-type twin
           exists) — none violates a pinned criterion, so no new tasks were
           registered.
+  - date_modified: 2026-08-28
+    modifications:
+      - description: >
+          Plan FROZEN and superseded by plan-routing-schema-v2.prompt.md
+          following the 2026-08-28 review of Task 4.3/Batch 5 (18 committed
+          tests red, gate assertions dropped until green, zero committed
+          schema coverage, PYTHONPATH cargo cult). Task 4.3 marked OBSOLETE —
+          the venv-control fix and husk removal changed its premises; the
+          Deferred section is re-registered as tracked Batch 4 of the new
+          plan. This file is kept as historical record only.
 related_files:
   - [TODO.md](./TODO.md)
+  - [plan-routing-schema-v2.prompt.md](./plan-routing-schema-v2.prompt.md)
 tags:
   - review/implementation-plan
   - guide/database-rebuild
@@ -58,6 +69,12 @@ tags:
 ---
 
 # Routing_data Database Rebuild — Registered Implementation Plan
+
+> [!IMPORTANT]
+> **FROZEN 2026-08-28 — superseded by [plan-routing-schema-v2.prompt.md](./plan-routing-schema-v2.prompt.md).**
+> Task 4.3 is OBSOLETE (the venv-control fix and the husk removal changed its
+> premises); the "Deferred — main repo issues" section is re-registered there as
+> tracked Batch 4. Kept as historical record only — do not add tasks here.
 
 ## Scope & rules (unchanged from draft)
 
@@ -493,7 +510,7 @@ Execution batches → **implementer**. Validation gates → **reviewer**.
     - **Artifacts:**
       + 📝 [walkthrough_4-1_4-2_4-3.md](file:///home/lucas_galdino/chimera/gpu_accelerated_clean/src/submodules/Routing_data/.github/prompts/task-resolutions/walkthrough_4-1_4-2_4-3.md) — Walkthrough
 
-+ [ ] **[REDO]** **Task 4.3: Rebuild database + copy + delete stale husks**
++ [ ] **[OBSOLETE]** **Task 4.3: Rebuild database + copy + delete stale husks** — superseded by [plan-routing-schema-v2.prompt.md](./plan-routing-schema-v2.prompt.md) Batch 7 (pointer updated 2026-08-28 after that plan's quality-gate re-batch). Premises changed 2026-08-28: the venv-control fix (editable path source) removed the PYTHONPATH workaround, and the stale husk was already removed from git tracking.
   * **What:** Run the process command from repo root with local submodule src; copy
     the result to `db/routing.duckdb`; delete stale empty copies.
   * **Why:** Produce the canonical DB; avoid the git-main `routing-data` shadowing.
@@ -547,6 +564,9 @@ Execution batches → **implementer**. Validation gates → **reviewer**.
 ---
 
 ## Deferred — main repo issues (do not touch yet)
+
+> [!NOTE]
+> Re-registered 2026-08-28 as **tracked Batch 8** in [plan-routing-schema-v2.prompt.md](./plan-routing-schema-v2.prompt.md) (pointer updated 2026-08-28 after that plan's quality-gate re-batch) — these are dependencies of the rebuild's end-to-end DoD, not deferrals.
 
 + [ ] Circular import `src/distances/matrix.py` <-> `src/protocols/problem_context.py` (first `DatabaseLoader.load()` raises `ImportError` on a fresh process; candidate fix: move `BackendModule` import under `TYPE_CHECKING`).
 + [ ] Main-repo consumers hardcode `datasets/routing.duckdb` (`src/benchmarking_v2/orchestration.py:315`, `src/benchmarks_v2/run_chapter4_benchmark.py:154`, `DatabaseLoader` default). Canonical DB now lives at `db/routing.duckdb`.

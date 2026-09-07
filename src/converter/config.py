@@ -18,7 +18,7 @@ class ConverterConfig:
 
     # Output settings
     json_output_path: str = "./datasets/json"
-    database_path: str = "./datasets/db/routing.duckdb"
+    database_path: str = "./db/routing.duckdb"
 
     # Processing settings
     batch_size: int = 100

@@ -5,7 +5,7 @@ from pathlib import Path
 import logging
 import sys
 import time
-from typing import Optional
+from typing import Any, Literal, Optional
 import json
 
 from ..utils.logging import setup_logging
@@ -25,10 +25,10 @@ from ..output.parquet_writer import ParquetWriter
 @click.version_option(version="0.1.0")
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
 @click.pass_context
-def cli(ctx, verbose):
+def cli(ctx, verbose) -> None:
     """TSPLIB95 ETL Converter - Convert TSPLIB/VRP instances to JSON and DuckDB."""
     ctx.ensure_object(dict)
-    log_level = 'DEBUG' if verbose else 'INFO'
+    log_level: Literal['DEBUG'] | Literal['INFO'] = 'DEBUG' if verbose else 'INFO'
     ctx.obj['logger'] = setup_logging(log_level)
 
 
@@ -38,7 +38,9 @@ def cli(ctx, verbose):
               help='Input directory containing TSPLIB files')
 @click.option('--output', '-o', type=click.Path(),
               default='./datasets',
-              help='Output directory for database (default: ./datasets)')
+              help='Output directory; the database is written to <output>/db/routing.duckdb '
+                '(config.yaml database_path is NOT consulted; to target the canonical '
+                'db/routing.duckdb, pass -o <submodule-root>)')
 @click.option('--parallel/--no-parallel', default=True,
               help='Enable parallel processing (default: enabled)')
 @click.option('--workers', default=4, type=int,
@@ -87,15 +89,15 @@ def process(ctx, input, output, parallel, workers, batch_size, types, force):
         file_list = []
 
         # Primary input directory
-        files_from_input = scanner.scan_files(input, patterns)
+        files_from_input = scanner.scan_files(directory=input, patterns)
         file_list.extend(files_from_input)
         logger.info(f"Found {len(files_from_input)} files in {input}")
 
         # Additional CVRPLIB directory (if exists)
         # Calculate path: datasets_raw/zips/all_problems -> datasets_raw -> datasets_raw/cvrplib
         input_path = Path(input)
-        raw_base = input_path.parent.parent if 'all_problems' in str(input_path) else input_path.parent
-        cvrplib_path = raw_base / 'cvrplib'
+        raw_base: Path = input_path.parent.parent if 'all_problems' in str(input_path) else input_path.parent
+        cvrplib_path: Path = raw_base / 'cvrplib'
         if cvrplib_path.exists():
             files_from_cvrplib = scanner.scan_files(str(cvrplib_path), patterns)
             file_list.extend(files_from_cvrplib)
@@ -210,26 +212,26 @@ def process(ctx, input, output, parallel, workers, batch_size, types, force):
             logger.info(f"  Throughput: {results['throughput']:.2f} files/sec")
 
         # Show final statistics
-        stats = db_manager.get_problem_stats()
+        stats: dict[str, Any] = db_manager.get_problem_stats()
         logger.info(f"Database statistics:")
         logger.info(f"  Total problems: {stats['total_problems']}")
         for type_stat in stats['by_type']:
             logger.info(f"  {type_stat['type']}: {type_stat['count']} problems "
-                       f"(avg dim: {type_stat['avg_dimension']}, "
-                       f"max dim: {type_stat['max_dimension']})")
+                        f"(avg dim: {type_stat['avg_dimension']}, "
+                        f"max dim: {type_stat['max_dimension']})")
 
-        click.echo(f"\n✓ Processing complete. Database: {db_path}")
+        click.echo(message=f"\n✓ Processing complete. Database: {db_path}")
 
     except Exception as e:
         logger.error(f"Processing failed: {e}", exc_info=True)
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(message=f"✗ Error: {e}", err=True)
         sys.exit(1)
 
 
 @cli.command()
 @click.option('--database', '-d', type=click.Path(exists=True),
-              default='./datasets/db/routing.duckdb',
-              help='Database file to validate')
+              default='./db/routing.duckdb',
+              help='Database file to validate (default: ./db/routing.duckdb)')
 @click.pass_context
 def validate(ctx, database):
     """
@@ -357,7 +359,19 @@ file_patterns:
 
 # Output settings
 json_output_path: "./datasets/json"
-database_path: "./datasets/db/routing.duckdb"
+
+# NOTE (2026-08-28, Task 2.6): `database_path` is the default recorded by
+# `converter init` and read via `converter.config.load_config()`. The canonical
+# DB for this submodule is `db/routing.duckdb` (submodule root). This value is
+# NOT read by `converter process` — that command derives its DB path from the
+# `-o/--output` option as `<output>/db/routing.duckdb` (default `./datasets`,
+# src/converter/cli/commands.py `process`). To target the canonical DB, run:
+#
+#   uv run converter process -i datasets/problems -o <submodule-root>
+#
+# Relative paths resolve against the process CWD (load_config() does not
+# resolve against this file's location).
+database_path: "./db/routing.duckdb"
 
 # Processing settings
 batch_size: 100
@@ -380,8 +394,8 @@ log_file: "./logs/converter.log"
 
 @cli.command(name='export-parquet')
 @click.option('--database', '-d', type=click.Path(exists=True),
-              default='./datasets/db/routing.duckdb',
-              help='Database file to export (default: ./datasets/db/routing.duckdb)')
+              default='./db/routing.duckdb',
+              help='Database file to export (default: ./db/routing.duckdb)')
 @click.option('--output', '-o', type=click.Path(),
               default='./datasets/parquet',
               help='Output directory for Parquet files (default: ./datasets/parquet)')
@@ -403,7 +417,7 @@ def export_parquet(ctx, database, output, tables, compression, info):
 
     Examples:
         # Export all tables
-        converter export-parquet -d datasets/db/routing.duckdb
+        converter export-parquet -d db/routing.duckdb
 
         # Export specific tables
         converter export-parquet -t problems -t nodes -o ./exports/
@@ -468,20 +482,20 @@ def export_parquet(ctx, database, output, tables, compression, info):
 
     except Exception as e:
         logger.error(f"Parquet export failed: {e}", exc_info=True)
-        click.echo(f"✗ Export error: {e}", err=True)
+        click.echo(message=f"✗ Export error: {e}", err=True)
         sys.exit(1)
 
 
 @cli.command()
 @click.option('--database', '-d', type=click.Path(exists=True),
-              default='./datasets_processed/db/routing.duckdb',
-              help='Database file to inspect (default: ./datasets_processed/db/routing.duckdb)')
+              default='./db/routing.duckdb',
+              help='Database file to inspect (default: ./db/routing.duckdb)')
 @click.option('--table', type=str, default=None,
               help='Show details for a specific table only')
 @click.option('--detail/--no-detail', default=False,
               help='Show schema and sample data for all tables (default: off)')
 @click.pass_context
-def inspect(ctx, database, table, detail):
+def inspect(ctx, database, table, detail) -> None:
     """
     Inspect DuckDB database: list tables, row counts, and schemas.
 

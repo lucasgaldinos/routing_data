@@ -1,10 +1,11 @@
 """Database operations for TSPLIB data storage and retrieval."""
 
-import duckdb
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 import logging
-from datetime import datetime
+import time
+from pathlib import Path
+from typing import Any, ClassVar
+
+import duckdb
 
 from ..utils.exceptions import DatabaseError, NotFoundError
 
@@ -21,7 +22,7 @@ class DatabaseManager:
     - Transaction management and error recovery
     """
 
-    def __init__(self, db_path: str, logger: Optional[logging.Logger] = None):
+    def __init__(self, db_path: str, logger: logging.Logger | None = None):
         """
         Initialize database manager.
 
@@ -30,565 +31,557 @@ class DatabaseManager:
             logger: Optional logger instance
         """
         self.db_path = Path(db_path)
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger: logging.Logger = logger or logging.getLogger(name=__name__)
         self._ensure_db_directory()
         self._initialize_schema()
 
-    def _ensure_db_directory(self):
+    def _ensure_db_directory(self) -> None:
         """Create database directory if it doesn't exist."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _initialize_schema(self):
-        """Initialize database schema and indexes."""
-        try:
-            with duckdb.connect(str(self.db_path)) as conn:
-                # Create sequences first
-                conn.execute("CREATE SEQUENCE IF NOT EXISTS problems_seq START 1")
-                conn.execute("CREATE SEQUENCE IF NOT EXISTS nodes_seq START 1")
-                conn.execute("CREATE SEQUENCE IF NOT EXISTS file_tracking_seq START 1")
-                conn.execute("CREATE SEQUENCE IF NOT EXISTS solutions_seq START 1")
+    def _initialize_schema(self) -> None:
+        """Initialize database schema and indexes
 
-                # Create problems table
-                conn.execute("""
+        v2 topology: a thin ``problems`` hub (discovery index) + five self-contained per-type tables with duplicated common columns (Decision 1) + three satellites (Decision 2). Node data lives in array columns on the type tables (Decision 3); the v1 ``nodes`` row-table is dropped.
+        """
+        try:
+            with duckdb.connect(database=str(self.db_path)) as conn:
+                # Sequences (nodes_seq dropped with the nodes table, Decision 3)
+                conn.execute(query="CREATE SEQUENCE IF NOT EXISTS problems_seq START 1")
+                conn.execute(query="CREATE SEQUENCE IF NOT EXISTS file_tracking_seq START 1")
+                conn.execute(query="CREATE SEQUENCE IF NOT EXISTS solutions_seq START 1")
+
+                # Hub: discovery index only. "Which table holds att48?" lives here.
+                conn.execute(query="""
                     CREATE TABLE IF NOT EXISTS problems (
                         id INTEGER PRIMARY KEY DEFAULT nextval('problems_seq'),
                         name VARCHAR NOT NULL,
-                        type VARCHAR NOT NULL,
-                        comment VARCHAR,
-                        dimension INTEGER NOT NULL,
-                        capacity INTEGER,
-                        edge_weight_type VARCHAR,
-                        edge_weight_format VARCHAR,
-                        tsplib_name VARCHAR,
-                        fixed_edges INTEGER[][],
-                        adjacency INTEGER[][],
+                        type VARCHAR NOT NULL
+                            CHECK (type IN ('TSP', 'ATSP', 'CVRP', 'HCP', 'SOP')),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE (name, type)
                     )
                 """)
 
-                # Migrate schema to add VRP variant fields
-                self._migrate_schema(conn)
-
-                # Create nodes table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS nodes (
-                        id INTEGER PRIMARY KEY DEFAULT nextval('nodes_seq'),
-                        problem_id INTEGER NOT NULL,
-                        node_id INTEGER NOT NULL,
-                        x DOUBLE,
-                        y DOUBLE,
-                        z DOUBLE,
-                        demand INTEGER DEFAULT 0,
-                        is_depot BOOLEAN DEFAULT FALSE,
-                        display_x DOUBLE,
-                        display_y DOUBLE,
-                        FOREIGN KEY (problem_id) REFERENCES problems(id)
+                # Type tables: self-contained; common columns duplicated BY DESIGN (Decision 1). coords is NULL iff EXPLICIT (the matrix row in edge_weight_matrices holds the data).
+                conn.execute(query="""
+                    CREATE TABLE IF NOT EXISTS tsp_problems (
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
+                        dimension INTEGER NOT NULL,
+                        comment VARCHAR,
+                        edge_weight_type VARCHAR NOT NULL,
+                        edge_weight_format VARCHAR,
+                        tsplib_name VARCHAR,
+                        coords DOUBLE[][],
+                        display_coords DOUBLE[][]
                     )
                 """)
 
-                # NO EDGES TABLE - edges are computed on-demand for coordinate-based problems
+                conn.execute(query="""
+                    CREATE TABLE IF NOT EXISTS atsp_problems (
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
+                        dimension INTEGER NOT NULL,
+                        comment VARCHAR,
+                        tsplib_name VARCHAR
+                    )
+                """)
 
-                # Create edge_weight_matrices table for EXPLICIT distance problems
-                conn.execute("""
+                conn.execute(query="""
+                    CREATE TABLE IF NOT EXISTS cvrp_problems (
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
+                        dimension INTEGER NOT NULL,
+                        capacity INTEGER NOT NULL,
+                        comment VARCHAR,
+                        edge_weight_type VARCHAR NOT NULL,
+                        edge_weight_format VARCHAR,
+                        tsplib_name VARCHAR,
+                        coords DOUBLE[][],
+                        demands INTEGER[] NOT NULL,
+                        depots INTEGER[] NOT NULL
+                    )
+                """)
+
+                conn.execute(query="""
+                    CREATE TABLE IF NOT EXISTS hcp_problems (
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
+                        dimension INTEGER NOT NULL,
+                        adjacency INTEGER[][] NOT NULL,
+                        comment VARCHAR,
+                        tsplib_name VARCHAR
+                    )
+                """)
+
+                conn.execute(query="""
+                    CREATE TABLE IF NOT EXISTS sop_problems (
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
+                        dimension INTEGER NOT NULL,
+                        fixed_edges INTEGER[][],
+                        comment VARCHAR,
+                        tsplib_name VARCHAR
+                    )
+                """)
+
+                # Satellites: single tables, FK -> hub (Decision 2).
+                conn.execute(query="""
                     CREATE TABLE IF NOT EXISTS edge_weight_matrices (
-                        problem_id INTEGER PRIMARY KEY,
+                        problem_id INTEGER PRIMARY KEY REFERENCES problems(id),
                         matrix_format VARCHAR NOT NULL,
                         is_symmetric BOOLEAN NOT NULL,
-                        matrix INTEGER[][],
-                        FOREIGN KEY (problem_id) REFERENCES problems(id)
+                        matrix INTEGER[][] NOT NULL
                     )
                 """)
 
                 # Create solutions table
-                conn.execute("""
+                conn.execute(query="""
                     CREATE TABLE IF NOT EXISTS solutions (
                         id INTEGER PRIMARY KEY DEFAULT nextval('solutions_seq'),
-                        problem_id INTEGER NOT NULL,
+                        problem_id INTEGER NOT NULL REFERENCES problems(id),
                         solution_name VARCHAR,
                         solution_type VARCHAR,
                         cost DOUBLE,
-                        routes INTEGER[][],
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (problem_id) REFERENCES problems(id)
+                        routes INTEGER[][] NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
 
-                # Create file tracking table
-                conn.execute("""
+                conn.execute(query="""
                     CREATE TABLE IF NOT EXISTS file_tracking (
                         id INTEGER PRIMARY KEY DEFAULT nextval('file_tracking_seq'),
                         file_path VARCHAR UNIQUE NOT NULL,
-                        problem_id INTEGER,
+                        problem_id INTEGER REFERENCES problems(id),
                         checksum VARCHAR,
                         last_processed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        file_size BIGINT,
-                        FOREIGN KEY (problem_id) REFERENCES problems(id)
+                        file_size BIGINT
                     )
                 """)
 
-                # Create indexes for better query performance
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_problems_type_dim
-                    ON problems(type, dimension)
+                # Indexes for query performance
+                conn.execute(query="""
+                    CREATE INDEX IF NOT EXISTS idx_problems_type
+                    ON problems(type)
                 """)
 
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_nodes_problem
-                    ON nodes(problem_id, node_id)
-                """)
-
-                conn.execute("""
+                conn.execute(query="""
                     CREATE INDEX IF NOT EXISTS idx_solutions_problem
                     ON solutions(problem_id)
                 """)
 
-                conn.execute("""
+                conn.execute(query="""
                     CREATE INDEX IF NOT EXISTS idx_edge_matrices_problem
                     ON edge_weight_matrices(problem_id)
                 """)
 
-
-                conn.execute("""
+                conn.execute(query="""
                     CREATE INDEX IF NOT EXISTS idx_file_tracking_path
                     ON file_tracking(file_path)
                 """)
 
-                self.logger.info(f"Database schema initialized at {self.db_path}")
+                self.logger.info(msg=f"Database schema initialized at {self.db_path}")
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize database schema: {e}")
+            self.logger.error(msg=f"Failed to initialize database schema: {e}")
             raise
 
-    def _migrate_schema(self, conn):
-        """Apply schema migrations for VRP variant support with transaction protection."""
-        try:
-            # Check if VRP fields exist and add them if needed
-            result = conn.execute("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'problems' AND column_name = 'capacity_vol'
-            """).fetchall()
+    # ------------------------------------------------------------------
+    # Schema v2 write path (Task 1.2): per-type insert dispatch.
+    # One explicit transaction per problem: hub row + type-table row, so a
+    # mid-insert failure rolls back both (no orphan rows).
+    # ------------------------------------------------------------------
 
-            if not result:
-                # Wrap ALTER TABLE statements in transaction for atomicity
-                conn.execute("BEGIN TRANSACTION")
-                try:
-                    # Add VRP variant fields (all-or-nothing)
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS capacity_vol INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS capacity_weight INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS max_distance DOUBLE")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS service_time DOUBLE")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS vehicles INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS depots INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS periods INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS has_time_windows BOOLEAN")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS has_pickup_delivery BOOLEAN")
-                    conn.execute("COMMIT")
-                    self.logger.debug("Added VRP variant fields to problems table")
-                except Exception as e:
-                    conn.execute("ROLLBACK")
-                    # Only raise if it's not a "column already exists" type error
-                    if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
-                        self.logger.error(f"Schema migration failed: {e}")
-                        raise DatabaseError(
-                            f"Failed to migrate schema: {e}",
-                            operation="schema_migration"
-                        )
+    _TYPE_INSERTERS: ClassVar[dict[str, str]] = {
+        "TSP": "_insert_tsp",
+        "ATSP": "_insert_atsp",
+        "CVRP": "_insert_cvrp",
+        "HCP": "_insert_hcp",
+        "SOP": "_insert_sop",
+    }
 
-        except Exception as e:
-            # If information_schema query fails, try direct column addition with IF NOT EXISTS
-            # This is a fallback for databases that don't support information_schema
-            if "information_schema" in str(e).lower() or "catalog" in str(e).lower():
-                try:
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS capacity_vol INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS capacity_weight INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS max_distance DOUBLE")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS service_time DOUBLE")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS vehicles INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS depots INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS periods INTEGER")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS has_time_windows BOOLEAN")
-                    conn.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS has_pickup_delivery BOOLEAN")
-                except Exception as fallback_error:
-                    # Only ignore "column exists" errors, raise everything else
-                    if "already exists" not in str(fallback_error).lower():
-                        self.logger.error(f"Schema migration fallback failed: {fallback_error}")
-                        raise DatabaseError(
-                            f"Failed to migrate schema (fallback): {fallback_error}",
-                            operation="schema_migration_fallback"
-                        )
-            else:
-                # Not an information_schema issue, re-raise
+    # Schema-v2 read-path registry (Task 1.5): hub -> owning type table. Same
+    # dispatch shape as ``_TYPE_INSERTERS``; ``load`` / ``get_problem_stats`` /
+    # ``query_problems`` resolve reads through it instead of the removed v1 STI
+    # columns on the hub.
+    _TYPE_TABLES: ClassVar[dict[str, str]] = {
+        "TSP": "tsp_problems",
+        "ATSP": "atsp_problems",
+        "CVRP": "cvrp_problems",
+        "HCP": "hcp_problems",
+        "SOP": "sop_problems",
+    }
+
+    def _resolve_type_table(self, problem_type: Any) -> str:
+        """Return the schema-v2 type table name for a problem type.
+
+        Normalizes the type exactly like the write path (``_normalize_type_for_schema``,
+        VRP-family variants -> ``cvrp_problems``) so reads resolve the same table a
+        write would have stored.
+        """
+        return self._TYPE_TABLES[self._normalize_type_for_schema(problem_type=problem_type)]
+
+    @staticmethod
+    def _normalize_type_for_schema(problem_type: Any) -> str:
+        """Map a parser problem type onto the five schema v2 types.
+
+        VRP-family variants (VRP, MC-VRP, TW-VRP, PD-VRP, ...) all land in ``cvrp_problems``; the schema CHECK only admits the five canonical types. Raises ``DatabaseError`` for anything else.
+        """
+        if not isinstance(problem_type, str):
+            raise DatabaseError(
+                message=f"Invalid problem type {problem_type!r}", operation="insert_problem"
+            )
+        t: str = problem_type.strip().upper()
+        if t in ("TSP", "ATSP", "CVRP", "HCP", "SOP"):
+            return t
+        if "VRP" in t:
+            return "CVRP"
+        raise DatabaseError(
+            message=f"Unsupported problem type {problem_type!r}", operation="insert_problem"
+        )
+
+    def _insert_hub(self, conn: Any, data: dict[str, Any]) -> int:
+        """Insert the hub row and return its generated id."""
+        result = conn.execute(
+            "INSERT INTO problems (name, type) VALUES (?, ?) RETURNING id",
+            [data.get("name"), self._normalize_type_for_schema(problem_type=data.get("type"))],
+        ).fetchone()
+        if not result:
+            raise DatabaseError(message="Failed to insert hub row", operation="insert_problem")
+        return int(result[0])
+
+    def _insert_tsp(self, conn: Any, problem_id: int, data: dict[str, Any]) -> None:
+        """Insert the ``tsp_problems`` row for an already-inserted hub id."""
+        conn.execute(
+            """
+            INSERT INTO tsp_problems
+                (problem_id, dimension, comment, edge_weight_type, edge_weight_format,
+                tsplib_name, coords, display_coords)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                problem_id,
+                data.get("dimension"),
+                data.get("comment"),
+                data.get("edge_weight_type"),
+                data.get("edge_weight_format"),
+                data.get("tsplib_name"),
+                data.get("coords"),
+                data.get("display_coords"),
+            ],
+        )
+
+    def _insert_atsp(self, conn: Any, problem_id: int, data: dict[str, Any]) -> None:
+        """Insert the ``atsp_problems`` row for an already-inserted hub id."""
+        conn.execute(
+            """
+            INSERT INTO atsp_problems (problem_id, dimension, comment, tsplib_name)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                problem_id,
+                data.get("dimension"),
+                data.get("comment"),
+                data.get("tsplib_name"),
+            ],
+        )
+
+    def _insert_cvrp(self, conn: Any, problem_id: int, data: dict[str, Any]) -> None:
+        """Insert the ``cvrp_problems`` row for an already-inserted hub id."""
+        demands: list[Any] = data.get("demands") or []
+        depots: list[Any] = data.get("depots") or []
+        dimension: Any | None = data.get("dimension")
+        if dimension is not None and len(demands) != int(dimension):
+            raise DatabaseError(
+                message=f"demands length {len(demands)} != dimension {dimension}",
+                operation="insert_problem",
+            )
+        conn.execute(
+            """
+            INSERT INTO cvrp_problems
+                (problem_id, dimension, capacity, comment, edge_weight_type,
+                 edge_weight_format, tsplib_name, coords, demands, depots)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                problem_id,
+                dimension,
+                data.get("capacity"),
+                data.get("comment"),
+                data.get("edge_weight_type"),
+                data.get("edge_weight_format"),
+                data.get("tsplib_name"),
+                data.get("coords"),
+                demands,
+                depots,
+            ],
+        )
+
+    def _insert_hcp(self, conn: Any, problem_id: int, data: dict[str, Any]) -> None:
+        """Insert the ``hcp_problems`` row for an already-inserted hub id."""
+        # adjacency may arrive under the transformer's legacy top-level `edges`
+        # key; accept both spellings (schema column name wins).
+        adjacency: Any | None = data.get("adjacency")
+        if adjacency is None:
+            adjacency = data.get("edges")
+        conn.execute(
+            """
+            INSERT INTO hcp_problems (problem_id, dimension, adjacency, comment, tsplib_name)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                problem_id,
+                data.get("dimension"),
+                adjacency,
+                data.get("comment"),
+                data.get("tsplib_name"),
+            ],
+        )
+
+    def _insert_sop(self, conn: Any, problem_id: int, data: dict[str, Any]) -> None:
+        """Insert the ``sop_problems`` row for an already-inserted hub id."""
+        conn.execute(
+            """
+            INSERT INTO sop_problems (problem_id, dimension, fixed_edges, comment, tsplib_name)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                problem_id,
+                data.get("dimension"),
+                data.get("fixed_edges"),
+                data.get("comment"),
+                data.get("tsplib_name"),
+            ],
+        )
+
+    def insert_problem(self, problem_data: dict[str, Any]) -> int:
+        """Insert one problem into the v2 schema: hub row + type-table row.
+
+        The hub, type-table and satellite rows (``edge_weight_matrices`` / ``solutions`` / ``file_tracking``) are written in a single explicit transaction so a mid-insert failure rolls them all back. ``problem_data`` is the merged payload produced by the transformer: hub fields (name, type), shared columns (dimension, comment, capacity, edge_weight_type, edge_weight_format, tsplib_name), the per-type array payload (coords, display_coords, demands, depots, adjacency, fixed_edges) and the satellite keys ``_insert_batch_satellites`` consumes (edge_weight_data, solution_data, file_path, checksum, file_size) — so an EXPLICIT problem round-trips with its matrix row present (Task 2.1).
+
+        Returns:
+            The generated hub ``problems.id``.
+        """
+        ptype: str = self._normalize_type_for_schema(problem_type=problem_data.get("type"))
+        inserter = getattr(self, self._TYPE_INSERTERS[ptype])
+        with duckdb.connect(database=str(self.db_path)) as conn:
+            conn.execute(query="BEGIN TRANSACTION")
+            try:
+                problem_id: int = self._insert_hub(conn, data=problem_data)
+                inserter(conn, problem_id, problem_data)
+                self._insert_batch_satellites(conn, problem_id, payload=problem_data)
+                conn.execute(query="COMMIT")
+            except Exception:
+                conn.execute(query="ROLLBACK")
                 raise
+        return problem_id
 
-    def insert_problem(self, problem_data: Dict[str, Any]) -> int:
+    def insert_problems_batch(self, problem_results: list[dict[str, Any]]) -> dict[str, Any]:
         """
-        Insert problem data into database.
+        Insert multiple problems into the v2 schema in one explicit transaction.
+
+        Each worker result is dispatched per type: hub row + type-table row via
+        the ``_TYPE_INSERTERS`` helpers, plus its satellite rows
+        (``edge_weight_matrices`` / ``solutions`` / ``file_tracking``). The
+        whole batch shares one transaction, so a mid-batch failure rolls back
+        every row written so far (no orphan hub rows).
 
         Args:
-            problem_data: Dictionary with problem information
+            problem_results: list of result dictionaries from worker processes
 
         Returns:
-            Problem ID
-        """
-        with duckdb.connect(str(self.db_path)) as conn:
-            result = conn.execute("""
-                INSERT INTO problems (name, type, comment, dimension, capacity,
-                                     edge_weight_type, edge_weight_format,
-                                     capacity_vol, capacity_weight, max_distance,
-                                     service_time, vehicles, depots, periods,
-                                     has_time_windows, has_pickup_delivery)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id
-            """, [
-                problem_data.get('name'),
-                problem_data.get('type'),
-                problem_data.get('comment'),
-                problem_data.get('dimension'),
-                problem_data.get('capacity'),
-                problem_data.get('edge_weight_type'),
-                problem_data.get('edge_weight_format'),
-                problem_data.get('capacity_vol'),
-                problem_data.get('capacity_weight'),
-                problem_data.get('max_distance'),
-                problem_data.get('service_time'),
-                problem_data.get('vehicles'),
-                problem_data.get('depots'),
-                problem_data.get('periods'),
-                problem_data.get('has_time_windows'),
-                problem_data.get('has_pickup_delivery')
-            ]).fetchone()
-
-            return result[0] if result else None
-
-    def insert_nodes(self, problem_id: int, nodes: List[Dict[str, Any]]) -> int:
-        """
-        Insert node data for a problem.
-
-        Args:
-            problem_id: Problem ID
-            nodes: List of node dictionaries
-
-        Returns:
-            Number of nodes inserted
-        """
-        if not nodes:
-            return 0
-
-        with duckdb.connect(str(self.db_path)) as conn:
-            for node in nodes:
-                conn.execute("""
-                    INSERT INTO nodes (problem_id, node_id, x, y, z, demand, is_depot,
-                                      display_x, display_y)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    problem_id,
-                    node.get('node_id'),
-                    node.get('x'),
-                    node.get('y'),
-                    node.get('z'),
-                    node.get('demand', 0),
-                    node.get('is_depot', False),
-                    node.get('display_x'),
-                    node.get('display_y')
-                ])
-
-        return len(nodes)
-
-    def insert_problems_batch(
-        self,
-        problem_results: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Insert multiple problems using pandas DataFrames for maximum performance.
-
-        Leverages DuckDB's native pandas integration and columnar engine for bulk inserts.
-        This approach is ~24x faster than executemany() for large datasets.
-
-        Why pandas > numpy:
-        - DuckDB has zero-copy pandas DataFrame support
-        - Handles mixed types (str, float, int, bool) naturally
-        - Column-oriented like DuckDB (numpy is row-oriented)
-        - Built-in NULL handling
-
-        Args:
-            problem_results: List of result dictionaries from worker processes
-
-        Returns:
-            Dictionary with:
-                - successful: List of successfully inserted problem names
-                - failed: List of dicts with {'name': str, 'error': str} for failures
+            dictionary with:
+                - successful: list of successfully inserted problem names
+                - failed: list of dicts with {'name': str, 'error': str} for failures
                 - total_inserted: Count of successful inserts
                 - total_failed: Count of failures
-
-        Examples:
-            >>> results = processor.process_files_parallel(...)
-            >>> batch_result = db.insert_problems_batch(results['results'])
-            >>> print(f"Inserted {batch_result['total_inserted']} problems in ~15 seconds")
         """
-        import time
-        import pandas as pd
-
         batch_start = time.time()
-        successful = []
-        failed = []
+        successful: list[str] = []
+        failed: list[dict[str, str]] = []
 
         if not problem_results:
             return {
-                'successful': successful,
-                'failed': failed,
-                'total_inserted': 0,
-                'total_failed': 0
+                "successful": successful,
+                "failed": failed,
+                "total_inserted": 0,
+                "total_failed": 0,
             }
 
-        # Step 1: Collect all data into lists (fast Python operation)
-        all_problems = []
-        all_nodes = []
-        all_edge_weights = []
-        all_solutions = []
-        all_file_tracking = []
-
+        # Step 1: Collect the merged per-type payload + satellites (fast Python).
+        # Per-row collection errors are captured per row; rows that fail here
+        # never enter the batch transaction.
+        collected: list[dict[str, Any]] = []
         collect_start = time.time()
-        for temp_id, result in enumerate(problem_results, start=1):
+        for result in problem_results:
             try:
-                problem_data = result.get('problem_data')
-                if not problem_data:
+                if not result.get("problem_data"):
                     continue
-
-                # Collect problem data. Graph columns (adjacency/fixed_edges)
-                # come from the worker's top-level edges/fixed_edges keys
-                # (Decision #4). Name disambiguation runs below (Decision in
-                # TODO: name = file stem when the internal NAME collides within
-                # the same type; original NAME goes to tsplib_name).
-                problem_record = {
-                    'temp_id': temp_id,  # Temporary ID for mapping (never name)
-                    'name': problem_data.get('name'),
-                    'type': problem_data.get('type'),
-                    'comment': problem_data.get('comment'),
-                    'dimension': problem_data.get('dimension'),
-                    'capacity': problem_data.get('capacity'),
-                    'edge_weight_type': problem_data.get('edge_weight_type'),
-                    'edge_weight_format': problem_data.get('edge_weight_format'),
-                    'capacity_vol': problem_data.get('capacity_vol'),
-                    'capacity_weight': problem_data.get('capacity_weight'),
-                    'max_distance': problem_data.get('max_distance'),
-                    'service_time': problem_data.get('service_time'),
-                    'vehicles': problem_data.get('vehicles'),
-                    'depots': problem_data.get('depots'),
-                    'periods': problem_data.get('periods'),
-                    'has_time_windows': problem_data.get('has_time_windows'),
-                    'has_pickup_delivery': problem_data.get('has_pickup_delivery'),
-                    'tsplib_name': None,  # Set during disambiguation
-                    'adjacency': result.get('edges'),
-                    'fixed_edges': result.get('fixed_edges'),
-                    'file_stem': Path(result['file_path']).stem
-                        if result.get('file_path') else None,
-                }
-                all_problems.append(problem_record)
-
-                # Collect nodes with temp_id reference
-                for node in result.get('nodes', []):
-                    node_record = {
-                        'temp_problem_id': temp_id,
-                        'node_id': node.get('node_id'),
-                        'x': node.get('x'),
-                        'y': node.get('y'),
-                        'z': node.get('z'),
-                        'demand': node.get('demand', 0),
-                        'is_depot': node.get('is_depot', False),
-                        'display_x': node.get('display_x'),
-                        'display_y': node.get('display_y')
-                    }
-                    all_nodes.append(node_record)
-
-                # Collect edge weights (Decision #2: nested-list matrix)
-                edge_weight_data = result.get('edge_weight_data')
-                if edge_weight_data:
-                    edge_record = {
-                        'temp_problem_id': temp_id,
-                        'matrix_format': edge_weight_data.get('matrix_format'),
-                        'is_symmetric': edge_weight_data.get('is_symmetric'),
-                        'matrix': edge_weight_data.get('matrix')
-                    }
-                    all_edge_weights.append(edge_record)
-
-                # Collect solutions
-                solution_data = result.get('solution_data')
-                if solution_data:
-                    solution_record = {
-                        'temp_problem_id': temp_id,
-                        'solution_name': solution_data.get('name'),
-                        'solution_type': solution_data.get('type'),
-                        'cost': solution_data.get('cost'),
-                        'routes': solution_data.get('routes', [])
-                    }
-                    all_solutions.append(solution_record)
-
-                # Collect file tracking
-                file_path = result.get('file_path')
-                if file_path:
-                    file_size = Path(file_path).stat().st_size if Path(file_path).exists() else 0
-                    tracking_record = {
-                        'temp_problem_id': temp_id,
-                        'file_path': file_path,
-                        'checksum': result.get('checksum'),
-                        'file_size': file_size
-                    }
-                    all_file_tracking.append(tracking_record)
-
+                collected.append(self._build_batch_problem_payload(result))
             except Exception as e:
-                problem_name = result.get('problem_data', {}).get('name', 'unknown')
-                failed.append({'name': problem_name, 'error': f"Data collection failed: {e}"})
-                self.logger.error(f"Failed to collect data for {problem_name}: {e}")
+                problem_name = result.get("problem_data", {}).get("name", "unknown")
+                failed.append({"name": problem_name, "error": f"Data collection failed: {e}"})
+                self.logger.error("Failed to collect data for %s: %s", problem_name, e)
+        collect_time = time.time() - collect_start
+        self.logger.info("Data collection: %d problems in %.2fs", len(collected), collect_time)
 
         # Step 1b: Disambiguate duplicate (name, type). name = file stem when the
         # internal NAME collides within the same type; original NAME goes to
         # tsplib_name (e.g. linhp318.tsp declares NAME: lin318 -> stored as
         # linhp318). Cross-type twins (att48 as TSP and as CVRP) keep the same
         # name; the type column + UNIQUE(name, type) disambiguate them.
-        name_type_counts = {}
-        for pr in all_problems:
-            key = (pr['name'], pr['type'])
-            name_type_counts[key] = name_type_counts.get(key, 0) + 1
-        for pr in all_problems:
-            key = (pr['name'], pr['type'])
-            if (
-                name_type_counts[key] > 1
-                and pr.get('file_stem')
-                and pr['file_stem'] != pr['name']
-            ):
-                pr['tsplib_name'] = pr['name']
-                pr['name'] = pr['file_stem']
+        self._disambiguate_names(collected)
 
-        collect_time = time.time() - collect_start
-        self.logger.info(f"Data collection: {len(all_problems)} problems, {len(all_nodes)} nodes in {collect_time:.2f}s")
+        if not collected:
+            return {
+                "successful": successful,
+                "failed": failed,
+                "total_inserted": 0,
+                "total_failed": len(failed),
+            }
 
-        # Step 2: Convert to pandas DataFrames (fast columnar operation)
-        df_start = time.time()
-        problems_df = pd.DataFrame(all_problems)
-        nodes_df = pd.DataFrame(all_nodes) if all_nodes else None
-        edge_weights_df = pd.DataFrame(all_edge_weights) if all_edge_weights else None
-        solutions_df = pd.DataFrame(all_solutions) if all_solutions else None
-        file_tracking_df = pd.DataFrame(all_file_tracking) if all_file_tracking else None
-        df_time = time.time() - df_start
-
-        self.logger.info(f"DataFrame creation: {df_time:.2f}s")
-
-        # Step 3: Bulk insert via DuckDB (FAST columnar engine)
+        # Step 2: Insert everything in one transaction; any failure rolls back
+        # the whole batch (rollback-all-on-failure, Task 1.4 DoD).
         insert_start = time.time()
         with duckdb.connect(str(self.db_path)) as conn:
             conn.execute("BEGIN TRANSACTION")
-
             try:
-                # Insert problems, capturing generated ids. Decision #10: the
-                # mapping is keyed by temp_id (never name). The installed DuckDB
-                # (1.5.5) rejects RETURNING source columns, so use the documented
-                # fallback: RETURNING id zipped to temp_id by source row order
-                # (DuckDB preserves INSERT...SELECT order for a DataFrame/temp
-                # table scan).
-                conn.register(view_name='problems_temp', python_object=problems_df)
-                returned_ids: list[tuple[Any, ...]] = conn.execute(query="""
-                    INSERT INTO problems (name, type, comment, dimension, capacity,
-                                         edge_weight_type, edge_weight_format,
-                                         capacity_vol, capacity_weight, max_distance,
-                                         service_time, vehicles, depots, periods,
-                                         has_time_windows, has_pickup_delivery,
-                                         tsplib_name, fixed_edges, adjacency)
-                    SELECT name, type, comment, dimension, capacity,
-                           edge_weight_type, edge_weight_format,
-                           capacity_vol, capacity_weight, max_distance,
-                           service_time, vehicles, depots, periods,
-                           has_time_windows, has_pickup_delivery,
-                           tsplib_name, fixed_edges, adjacency
-                    FROM problems_temp
-                    RETURNING id
-                """).fetchall()
-
-                problem_id_mapping = dict(zip(
-                    [pr['temp_id'] for pr in all_problems],
-                    [row[0] for row in returned_ids]
-                ))
-
-                # Register the mapping for foreign-key joins
-                mapping_df = pd.DataFrame(data=[
-                    {'temp_id': tid, 'real_id': rid}
-                    for tid, rid in problem_id_mapping.items()
-                ])
-                conn.register(view_name='problem_id_mapping', python_object=mapping_df)
-
-                # Insert nodes with real problem IDs
-                if nodes_df is not None:
-                    conn.register(view_name='nodes_temp', python_object=nodes_df)
-                    conn.execute(query="""
-                        INSERT INTO nodes (problem_id, node_id, x, y, z, demand, is_depot, display_x, display_y)
-                        SELECT m.real_id, n.node_id, n.x, n.y, n.z, n.demand, n.is_depot, n.display_x, n.display_y
-                        FROM nodes_temp n
-                        JOIN problem_id_mapping m ON n.temp_problem_id = m.temp_id
-                    """)
-
-                # Insert edge weight matrices (Decision #2: nested-list matrix)
-                if edge_weights_df is not None:
-                    conn.register(view_name='edges_temp', python_object=edge_weights_df)
-                    conn.execute(query="""
-                        INSERT INTO edge_weight_matrices (problem_id, matrix_format, is_symmetric, matrix)
-                        SELECT m.real_id, e.matrix_format, e.is_symmetric, e.matrix
-                        FROM edges_temp e
-                        JOIN problem_id_mapping m ON e.temp_problem_id = m.temp_id
-                    """)
-
-                # Insert solutions
-                if solutions_df is not None:
-                    conn.register('solutions_temp', solutions_df)
-                    conn.execute("""
-                        INSERT INTO solutions (problem_id, solution_name, solution_type, cost, routes)
-                        SELECT m.real_id, s.solution_name, s.solution_type, s.cost, s.routes
-                        FROM solutions_temp s
-                        JOIN problem_id_mapping m ON s.temp_problem_id = m.temp_id
-                    """)
-
-                # Insert file tracking
-                if file_tracking_df is not None:
-                    conn.register('tracking_temp', file_tracking_df)
-                    conn.execute("""
-                        INSERT INTO file_tracking (file_path, problem_id, checksum, file_size)
-                        SELECT f.file_path, m.real_id, f.checksum, f.file_size
-                        FROM tracking_temp f
-                        JOIN problem_id_mapping m ON f.temp_problem_id = m.temp_id
-                        ON CONFLICT (file_path) DO UPDATE SET
-                            problem_id = EXCLUDED.problem_id,
-                            checksum = EXCLUDED.checksum,
-                            last_processed = now(),
-                            file_size = EXCLUDED.file_size
-                    """)
-
+                for payload in collected:
+                    problem_id = self._insert_hub(conn, data=payload)
+                    ptype = self._normalize_type_for_schema(problem_type=payload.get("type"))
+                    getattr(self, self._TYPE_INSERTERS[ptype])(conn, problem_id, payload)
+                    self._insert_batch_satellites(conn, problem_id, payload)
                 conn.execute("COMMIT")
-                successful = [row['name'] for row in all_problems]
-
+                successful = [payload["name"] for payload in collected]
             except Exception as e:
                 conn.execute("ROLLBACK")
-                self.logger.error(f"Batch insert failed: {e}")
-                failed = [{'name': row['name'], 'error': str(e)} for row in all_problems]
+                self.logger.error("Batch insert failed: %s", e)
+                failed = [{"name": payload["name"], "error": str(e)} for payload in collected]
 
         insert_time = time.time() - insert_start
         batch_total = time.time() - batch_start
-
         self.logger.info(
-            f"Batch insert complete: {len(successful)} successful, {len(failed)} failed"
+            "Batch insert complete: %d successful, %d failed",
+            len(successful),
+            len(failed),
         )
         self.logger.info(
-            f"Timing breakdown: Collect={collect_time:.2f}s, DataFrame={df_time:.2f}s, "
-            f"Insert={insert_time:.2f}s, Total={batch_total:.2f}s"
+            "Timing breakdown: Collect=%.2fs, Insert=%.2fs, Total=%.2fs",
+            collect_time,
+            insert_time,
+            batch_total,
         )
 
         return {
-            'successful': successful,
-            'failed': failed,
-            'total_inserted': len(successful),
-            'total_failed': len(failed)
+            "successful": successful,
+            "failed": failed,
+            "total_inserted": len(successful),
+            "total_failed": len(failed),
         }
 
-    def load(self, name: str, type: str) -> Dict[str, Any]:
+    def _build_batch_problem_payload(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Build the merged v2 problem payload + satellites from a worker result.
+
+        Mirrors ``insert_problem``'s merged payload: hub fields (name, type),
+        shared columns (dimension, comment, capacity, edge_weight_type,
+        edge_weight_format, tsplib_name) and the per-type array payload
+        (coords, display_coords, demands, depots, adjacency, fixed_edges).
+        Satellite data rides along under dedicated keys.
+        """
+        problem_data = result.get("problem_data", {})
+        file_path = result.get("file_path")
+        return {
+            "name": problem_data.get("name"),
+            "type": problem_data.get("type"),
+            "comment": problem_data.get("comment"),
+            "dimension": problem_data.get("dimension"),
+            "capacity": problem_data.get("capacity"),
+            "edge_weight_type": problem_data.get("edge_weight_type"),
+            "edge_weight_format": problem_data.get("edge_weight_format"),
+            "tsplib_name": None,  # Set during disambiguation
+            # Per-type array payload (worker top-level keys, Task 1.2/Decision 3)
+            "coords": result.get("coords"),
+            "display_coords": result.get("display_coords"),
+            "demands": result.get("demands", []),
+            "depots": result.get("depots", []),
+            # Graph data (worker top-level keys, Decision #4)
+            "adjacency": result.get("edges"),
+            "fixed_edges": result.get("fixed_edges"),
+            # Satellites
+            "edge_weight_data": result.get("edge_weight_data"),
+            "solution_data": result.get("solution_data"),
+            "file_path": file_path,
+            "checksum": result.get("checksum"),
+            "file_size": (
+                Path(file_path).stat().st_size if file_path and Path(file_path).exists() else 0
+            ),
+            "file_stem": Path(file_path).stem if file_path else None,
+        }
+
+    def _disambiguate_names(self, collected: list[dict[str, Any]]) -> None:
+        """Apply the batch name→file-stem disambiguation in place (v1 logic preserved)."""
+        name_type_counts: dict[tuple[Any, Any], int] = {}
+        for payload in collected:
+            key: tuple[Any, Any] = (payload["name"], payload["type"])
+            name_type_counts[key] = name_type_counts.get(key, 0) + 1
+        for payload in collected:
+            key = (payload["name"], payload["type"])
+            if (
+                name_type_counts[key] > 1
+                and payload.get("file_stem")
+                and payload["file_stem"] != payload["name"]
+            ):
+                payload["tsplib_name"] = payload["name"]
+                payload["name"] = payload["file_stem"]
+
+    def _insert_batch_satellites(self, conn: Any, problem_id: int, payload: dict[str, Any]) -> None:
+        """Insert a problem's satellite rows (matrix / solutions / file_tracking)."""
+        edge_weight_data: Any | None = payload.get("edge_weight_data")
+        if edge_weight_data and edge_weight_data.get("matrix") is not None:
+            conn.execute(
+                """
+                INSERT INTO edge_weight_matrices
+                    (problem_id, matrix_format, is_symmetric, matrix)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    problem_id,
+                    edge_weight_data.get("matrix_format"),
+                    edge_weight_data.get("is_symmetric"),
+                    edge_weight_data.get("matrix"),
+                ],
+            )
+
+        solution_data: Any | None = payload.get("solution_data")
+        if solution_data:
+            conn.execute(
+                """
+                INSERT INTO solutions
+                    (problem_id, solution_name, solution_type, cost, routes)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    problem_id,
+                    solution_data.get("name"),
+                    solution_data.get("type"),
+                    solution_data.get("cost"),
+                    solution_data.get("routes", []),
+                ],
+            )
+
+        file_path: Any | None = payload.get("file_path")
+        if file_path:
+            conn.execute(
+                """
+                INSERT INTO file_tracking (file_path, problem_id, checksum, file_size)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (file_path) DO UPDATE SET
+                    problem_id = EXCLUDED.problem_id,
+                    checksum = EXCLUDED.checksum,
+                    last_processed = now(),
+                    file_size = EXCLUDED.file_size
+                """,
+                [file_path, problem_id, payload.get("checksum"), payload.get("file_size")],
+            )
+
+    def load(self, name: str, type: str) -> dict[str, Any]:
         """
         Load a single problem by exact (name, type).
 
@@ -600,27 +593,37 @@ class DatabaseManager:
             type: Problem type (e.g. 'TSP', 'CVRP')
 
         Returns:
-            Dictionary of the problem row (includes tsplib_name, adjacency,
-            fixed_edges).
+            dictionary of the full type-table row joined to the hub row (includes tsplib_name, adjacency, fixed_edges and the per-type array columns, e.g. coords).
 
         Raises:
             NotFoundError: If no row matches (name, type).
         """
+        normalized_type: str = self._normalize_type_for_schema(problem_type=type)
+        table: str = self._TYPE_TABLES[normalized_type]
         with duckdb.connect(database=str(object=self.db_path)) as conn:
             row: tuple[Any, ...] | None = conn.execute(
-                query="SELECT * FROM problems WHERE name = ? AND type = ?",
-                parameters=[name, type]
+                query=(
+                    f"""SELECT * FROM problems p
+                    JOIN {table} t ON t.problem_id = p.id
+                    WHERE p.name = ? AND p.type = ?"""
+                ),
+                parameters=[name, normalized_type],
             ).fetchone()
             if not row:
                 raise NotFoundError(
-                    message=f"Problem '{name}' of type '{type}' not found",
-                    name=name,
-                    type=type
+                    message=f"Problem '{name}' of type '{type}' not found", name=name, type=type
                 )
-            columns = [col[0] for col in conn.execute(
-                "SELECT * FROM problems WHERE 1=0"
-            ).description]
-            return dict(zip(columns, row))
+            columns: list[str] = [
+                col[0]
+                for col in conn.execute(
+                    query=(
+                        f"""SELECT * FROM problems p
+                        JOIN {table} t ON t.problem_id = p.id
+                        WHERE 1=0"""
+                    )
+                ).description
+            ]
+            return dict(zip(columns, row, strict=True))
 
     def load_matrix(self, name: str, type: str) -> list[list[int]]:
         """
@@ -636,22 +639,25 @@ class DatabaseManager:
         Raises:
             NotFoundError: If the problem or its edge-weight matrix is missing.
         """
-        with duckdb.connect(str(self.db_path)) as conn:
-            row = conn.execute("""
+        with duckdb.connect(database=str(self.db_path)) as conn:
+            row: tuple[Any, ...] | None = conn.execute(
+                query="""
                 SELECT e.matrix
                 FROM edge_weight_matrices e
                 JOIN problems p ON p.id = e.problem_id
                 WHERE p.name = ? AND p.type = ?
-            """, [name, type]).fetchone()
+            """,
+                parameters=[name, type],
+            ).fetchone()
             if not row or row[0] is None:
                 raise NotFoundError(
-                    f"Edge weight matrix for '{name}' of type '{type}' not found",
+                    message=f"Edge weight matrix for '{name}' of type '{type}' not found",
                     name=name,
-                    type=type
+                    type=type,
                 )
             return [list(inner) for inner in row[0]]
 
-    def get_file_info(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_file_info(self, file_path: str) -> dict[str, Any] | None:
         """
         Get file tracking information.
 
@@ -659,151 +665,206 @@ class DatabaseManager:
             file_path: Path to file
 
         Returns:
-            Dictionary with file tracking info or None
+            dictionary with file tracking info or None
         """
-        with duckdb.connect(str(self.db_path)) as conn:
-            result = conn.execute("""
+        with duckdb.connect(database=str(self.db_path)) as conn:
+            result: tuple[Any, ...] | None = conn.execute(
+                query="""
                 SELECT problem_id, checksum, last_processed, file_size
                 FROM file_tracking
                 WHERE file_path = ?
-            """, [file_path]).fetchone()
+            """,
+                parameters=[file_path],
+            ).fetchone()
 
             if result:
                 return {
-                    'problem_id': result[0],
-                    'checksum': result[1],
-                    'last_processed': result[2],
-                    'file_size': result[3]
+                    "problem_id": result[0],
+                    "checksum": result[1],
+                    "last_processed": result[2],
+                    "file_size": result[3],
                 }
 
             return None
 
-    def update_file_tracking(self, tracking_info: Dict[str, Any]) -> None:
+    def update_file_tracking(self, tracking_info: dict[str, Any]) -> None:
         """
         Update file tracking information.
 
         Args:
-            tracking_info: Dictionary with tracking information
+            tracking_info: dictionary with tracking information
         """
-        with duckdb.connect(str(self.db_path)) as conn:
+        with duckdb.connect(database=str(self.db_path)) as conn:
             # Check if file path exists
-            existing = conn.execute("""
+            existing: tuple[Any, ...] | None = conn.execute(
+                query="""
                 SELECT id FROM file_tracking WHERE file_path = ?
-            """, [tracking_info['file_path']]).fetchone()
+            """,
+                parameters=[tracking_info["file_path"]],
+            ).fetchone()
 
             if existing:
                 # Update existing record
-                conn.execute("""
+                conn.execute(
+                    query="""
                     UPDATE file_tracking
                     SET problem_id = ?, checksum = ?, last_processed = ?, file_size = ?
                     WHERE file_path = ?
-                """, [
-                    tracking_info['problem_id'],
-                    tracking_info['checksum'],
-                    tracking_info['last_processed'],
-                    tracking_info['file_size'],
-                    tracking_info['file_path']
-                ])
+                """,
+                    parameters=[
+                        tracking_info["problem_id"],
+                        tracking_info["checksum"],
+                        tracking_info["last_processed"],
+                        tracking_info["file_size"],
+                        tracking_info["file_path"],
+                    ],
+                )
             else:
                 # Insert new record
-                conn.execute("""
+                conn.execute(
+                    query="""
                     INSERT INTO file_tracking
                     (file_path, problem_id, checksum, last_processed, file_size)
                     VALUES (?, ?, ?, ?, ?)
-                """, [
-                    tracking_info['file_path'],
-                    tracking_info['problem_id'],
-                    tracking_info['checksum'],
-                    tracking_info['last_processed'],
-                    tracking_info['file_size']
-                ])
+                """,
+                    parameters=[
+                        tracking_info["file_path"],
+                        tracking_info["problem_id"],
+                        tracking_info["checksum"],
+                        tracking_info["last_processed"],
+                        tracking_info["file_size"],
+                    ],
+                )
 
-    def get_problem_stats(self) -> Dict[str, Any]:
+    def get_problem_stats(self) -> dict[str, Any]:
         """
         Get statistics about stored problems.
 
         Returns:
-            Dictionary with statistics
+            dictionary with statistics
         """
-        with duckdb.connect(str(self.db_path)) as conn:
-            # Count by type
-            type_counts = conn.execute("""
-                SELECT type, COUNT(*) as count, AVG(dimension) as avg_dim, MAX(dimension) as max_dim
-                FROM problems
-                GROUP BY type
+        with duckdb.connect(database=str(self.db_path)) as conn:
+            # Dimension lives on the five type tables (the hub has no STI
+            # columns, Task 1.1). Aggregate per type over a UNION ALL of the
+            # type tables joined to the hub; LEFT JOIN keeps hub rows counted
+            # even if a type row were ever missing.
+            dimension_union: str = " UNION ALL ".join(
+                f"""SELECT problem_id, dimension
+                FROM {table}"""
+                for table in self._TYPE_TABLES.values()
+            )
+            type_counts: list[tuple[Any, ...]] = conn.execute(query=f"""
+                SELECT p.type,
+                      COUNT(*) AS count,
+                      AVG(t.dimension) AS avg_dim,
+                      MAX(t.dimension) AS max_dim
+                FROM problems p
+                LEFT JOIN ({dimension_union}) t ON t.problem_id = p.id
+                GROUP BY p.type
+                ORDER BY p.type
             """).fetchall()
 
             # Total count
-            total = conn.execute("SELECT COUNT(*) FROM problems").fetchone()[0]
+            total_row: tuple[Any, ...] | None = conn.execute(
+                query="SELECT COUNT(*) FROM problems"
+            ).fetchone()
+            if total_row is None:
+                raise DatabaseError(
+                    message="Failed to count problems", operation="get_problem_stats"
+                )
+            total = total_row[0]
 
             return {
-                'total_problems': total,
-                'by_type': [
+                "total_problems": total,
+                "by_type": [
                     {
-                        'type': row[0],
-                        'count': row[1],
-                        'avg_dimension': round(row[2], 2) if row[2] else 0,
-                        'max_dimension': row[3]
+                        "type": row[0],
+                        "count": row[1],
+                        "avg_dimension": round(number=row[2], ndigits=2) if row[2] else 0,
+                        "max_dimension": row[3],
                     }
                     for row in type_counts
-                ]
+                ],
             }
 
     def query_problems(
         self,
-        problem_type: Optional[str] = None,
-        min_dimension: Optional[int] = None,
-        max_dimension: Optional[int] = None,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
+        problem_type: str | None = None,
+        min_dimension: int | None = None,
+        max_dimension: int | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
         """
         Query problems with filters.
 
+        The hub has no STI columns (Task 1.1), so the query reads each type
+        table joined to the hub and UNION ALLs them. ``capacity`` /
+        ``edge_weight_type`` / ``edge_weight_format`` exist only on the TSP and
+        CVRP type tables; the other tables contribute typed NULLs.
+
         Args:
-            problem_type: Filter by problem type
+            problem_type: Filter by problem type (VRP-family variants are
+                normalized to CVRP, matching the write path).
             min_dimension: Minimum dimension
             max_dimension: Maximum dimension
             limit: Maximum results to return
 
         Returns:
-            List of problem dictionaries
+            list of problem dictionaries
         """
-        query = "SELECT * FROM problems WHERE 1=1"
-        params = []
+        selects: list[str] = []
+        for ptype in ("TSP", "ATSP", "CVRP", "HCP", "SOP"):
+            table: str = self._TYPE_TABLES[ptype]
+            has_weights: bool = ptype in ("TSP", "CVRP")
+            capacity_col: str = f"{table}.capacity" if ptype == "CVRP" else "CAST(NULL AS INTEGER)"
+            ewt_col: str = f"{table}.edge_weight_type" if has_weights else "CAST(NULL AS VARCHAR)"
+            ewf_col: str = f"{table}.edge_weight_format" if has_weights else "CAST(NULL AS VARCHAR)"
+            selects.append(f"""
+                SELECT p.id, p.name, p.type, {table}.comment AS comment,
+                      {table}.dimension AS dimension,
+                      {capacity_col} AS capacity,
+                      {ewt_col} AS edge_weight_type,
+                      {ewf_col} AS edge_weight_format
+                FROM problems p
+                JOIN {table} ON {table}.problem_id = p.id
+                """)
+
+        query = "SELECT * FROM (" + " UNION ALL ".join(selects) + ") q WHERE 1=1"
+        params: list[Any] = []
 
         if problem_type:
-            query += " AND type = ?"
-            params.append(problem_type)
+            query += " AND q.type = ?"
+            params.append(self._normalize_type_for_schema(problem_type=problem_type))
 
         if min_dimension is not None:
-            query += " AND dimension >= ?"
+            query += " AND q.dimension >= ?"
             params.append(min_dimension)
 
         if max_dimension is not None:
-            query += " AND dimension <= ?"
+            query += " AND q.dimension <= ?"
             params.append(max_dimension)
 
-        query += " LIMIT ?"  # Parameterized to prevent SQL injection
+        query += " ORDER BY q.name LIMIT ?"  # Parameterized to prevent SQL injection
         params.append(limit)
 
         with duckdb.connect(str(self.db_path)) as conn:
-            results = conn.execute(query, params).fetchall()
+            results: list[tuple[Any, ...]] = conn.execute(query, parameters=params).fetchall()
 
             return [
                 {
-                    'id': row[0],
-                    'name': row[1],
-                    'type': row[2],
-                    'comment': row[3],
-                    'dimension': row[4],
-                    'capacity': row[5],
-                    'edge_weight_type': row[6],
-                    'edge_weight_format': row[7]
+                    "id": row[0],
+                    "name": row[1],
+                    "type": row[2],
+                    "comment": row[3],
+                    "dimension": row[4],
+                    "capacity": row[5],
+                    "edge_weight_type": row[6],
+                    "edge_weight_format": row[7],
                 }
                 for row in results
             ]
 
-    def export_problem(self, problem_id: int) -> Dict[str, Any]:
+    def export_problem(self, problem_id: int) -> dict[str, Any]:
         """
         Export complete problem data.
 
@@ -811,44 +872,49 @@ class DatabaseManager:
             problem_id: Problem ID to export
 
         Returns:
-            Dictionary with complete problem data
+            dictionary with complete problem data
         """
-        with duckdb.connect(str(self.db_path)) as conn:
+        with duckdb.connect(database=str(self.db_path)) as conn:
             # Get problem data
-            problem = conn.execute("""
+            problem: tuple[Any, ...] | None = conn.execute(
+                query="""
                 SELECT * FROM problems WHERE id = ?
-            """, [problem_id]).fetchone()
+            """,
+                parameters=[problem_id],
+            ).fetchone()
 
             if not problem:
                 raise DatabaseError(
-                    f"Problem {problem_id} not found",
-                    operation="get_problem_with_nodes"
+                    message=f"Problem {problem_id} not found", operation="get_problem_with_nodes"
                 )
 
             # Get nodes
-            nodes = conn.execute("""
+            nodes: list[tuple[Any, ...]] = conn.execute(
+                query="""
                 SELECT * FROM nodes WHERE problem_id = ?
-            """, [problem_id]).fetchall()
+            """,
+                parameters=[problem_id],
+            ).fetchall()
 
             # NO EDGES - not precomputed
 
             return {
-                'problem': {
-                    'id': problem[0],
-                    'name': problem[1],
-                    'type': problem[2],
-                    'comment': problem[3],
-                    'dimension': problem[4]
+                "problem": {
+                    "id": problem[0],
+                    "name": problem[1],
+                    "type": problem[2],
+                    "comment": problem[3],
+                    "dimension": problem[4],
                 },
-                'nodes': [
+                "nodes": [
                     {
-                        'node_id': node[2],
-                        'x': node[3],
-                        'y': node[4],
-                        'z': node[5],
-                        'demand': node[6],
-                        'is_depot': node[7]
+                        "node_id": node[2],
+                        "x": node[3],
+                        "y": node[4],
+                        "z": node[5],
+                        "demand": node[6],
+                        "is_depot": node[7],
                     }
                     for node in nodes
-                ]
+                ],
             }

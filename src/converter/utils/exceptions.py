@@ -15,7 +15,6 @@ These exceptions are separate from format.exceptions (parsing errors) to maintai
 clean separation between parsing (format/) and ETL conversion (converter/).
 """
 
-from typing import Optional
 
 
 class ConverterError(Exception):
@@ -53,7 +52,7 @@ class ConverterError(Exception):
     def __init__(self, message: str, *args: object) -> None:
         """Initialize converter error with message."""
         super().__init__(message, *args)
-        self.message = message
+        self.message: str = message
 
 
 class ExtractionError(ConverterError):
@@ -95,14 +94,14 @@ class ExtractionError(ConverterError):
     Distinct from format.ParseError which occurs during file parsing.
     """
 
-    def __init__(self, message: str, problem_name: Optional[str] = None, *args: object) -> None:
+    def __init__(self, message: str, problem_name: str | None = None, *args: object) -> None:
         """Initialize extraction error with optional problem context."""
         if problem_name:
-            full_message = f"[{problem_name}] {message}"
+            full_message: str = f"[{problem_name}] {message}"
         else:
             full_message = message
         super().__init__(full_message, *args)
-        self.problem_name = problem_name
+        self.problem_name: str | None = problem_name
 
 
 class TransformError(ConverterError):
@@ -143,14 +142,14 @@ class TransformError(ConverterError):
     Used in DataTransformer for normalization, validation, and conversion logic.
     """
 
-    def __init__(self, message: str, field_name: Optional[str] = None, *args: object) -> None:
+    def __init__(self, message: str, field_name: str | None = None, *args: object) -> None:
         """Initialize transform error with optional field context."""
         if field_name:
-            full_message = f"{message} (field: {field_name})"
+            full_message: str = f"{message} (field: {field_name})"
         else:
             full_message = message
         super().__init__(full_message, *args)
-        self.field_name = field_name
+        self.field_name: str | None = field_name
 
 
 class DatabaseError(ConverterError):
@@ -191,14 +190,14 @@ class DatabaseError(ConverterError):
     Used in DatabaseManager for all DuckDB-related operations.
     """
 
-    def __init__(self, message: str, operation: Optional[str] = None, *args: object) -> None:
+    def __init__(self, message: str, operation: str | None = None, *args: object) -> None:
         """Initialize database error with optional operation context."""
         if operation:
-            full_message = f"{message} (operation: {operation})"
+            full_message: str = f"{message} (operation: {operation})"
         else:
             full_message = message
         super().__init__(full_message, *args)
-        self.operation = operation
+        self.operation: str | None = operation
 
 
 class OutputError(ConverterError):
@@ -239,14 +238,14 @@ class OutputError(ConverterError):
     Used in JSONWriter and other output generation components.
     """
 
-    def __init__(self, message: str, file_path: Optional[str] = None, *args: object) -> None:
+    def __init__(self, message: str, file_path: str | None = None, *args: object) -> None:
         """Initialize output error with optional file path context."""
         if file_path:
-            full_message = f"{message} (file: {file_path})"
+            full_message: str = f"{message} (file: {file_path})"
         else:
             full_message = message
         super().__init__(full_message, *args)
-        self.file_path = file_path
+        self.file_path: str | None = file_path
 
 
 class NotFoundError(ConverterError):
@@ -290,27 +289,27 @@ class NotFoundError(ConverterError):
     def __init__(
         self,
         message: str,
-        name: Optional[str] = None,
-        type: Optional[str] = None,
+        name: str | None = None,
+        type: str | None = None,
         *args: object
     ) -> None:
         """Initialize not-found error with optional name/type context."""
         if name and type:
-            full_message = f"[{name}/{type}] {message}"
+            full_message: str = f"[{name}/{type}] {message}"
         elif name or type:
             full_message = f"[{name or type}] {message}"
         else:
             full_message = message
         super().__init__(full_message, *args)
-        self.name = name
-        self.type = type
+        self.name: str | None = name
+        self.type: str | None = type
 
 
-__all__ = [
+__all__: list[str] = [
     'ConverterError',
-    'ExtractionError',
-    'TransformError',
     'DatabaseError',
-    'OutputError',
+    'ExtractionError',
     'NotFoundError',
+    'OutputError',
+    'TransformError',
 ]

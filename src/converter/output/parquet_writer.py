@@ -23,7 +23,7 @@ class ParquetWriter:
 
     Example:
         >>> writer = ParquetWriter(output_dir="datasets/parquet")
-        >>> writer.export_from_database("datasets/db/routing.duckdb")
+        >>> writer.export_from_database("db/routing.duckdb")
         >>> # Creates: problems.parquet, nodes.parquet, edge_weight_matrices.parquet
     """
 
@@ -73,7 +73,7 @@ class ParquetWriter:
         Example:
             >>> writer = ParquetWriter()
             >>> files = writer.export_from_database(
-            ...     "datasets/db/routing.duckdb",
+            ...     "db/routing.duckdb",
             ...     tables=["problems", "nodes"]
             ... )
             >>> print(files)
@@ -201,7 +201,7 @@ class ParquetWriter:
         Example:
             >>> writer = ParquetWriter()
             >>> path = writer.export_table(
-            ...     "datasets/db/routing.duckdb",
+            ...     "db/routing.duckdb",
             ...     "problems",
             ...     output_filename="tsp_problems.parquet"
             ... )
@@ -292,7 +292,7 @@ def export_database_to_parquet(
 
     Example:
         >>> from converter.output.parquet_writer import export_database_to_parquet
-        >>> files = export_database_to_parquet("datasets/db/routing.duckdb")
+        >>> files = export_database_to_parquet("db/routing.duckdb")
         >>> print(f"Exported {len(files)} tables")
     """
     writer = ParquetWriter(output_dir=output_dir, compression=compression, logger=logger)

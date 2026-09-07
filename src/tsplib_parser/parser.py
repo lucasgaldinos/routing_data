@@ -1,14 +1,14 @@
 """TSPLIB95 parser integration for ETL converter."""
 
-from pathlib import Path
-from typing import Any, Callable, Literal, Optional
 import logging
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, Literal, Optional
 
-from .models import StringField
-
-from .models import StandardProblem
 from .exceptions import ParseError, ValidationError
+from .models import DemandsField, IndexedCoordinatesField, StandardProblem, StringField
 from .validation import validate_problem_data
+
 
 class FormatParser:
     """TSPLIB95 file parser with complete extraction and normalization.
@@ -150,6 +150,10 @@ class FormatParser:
             self.validate_problem(problem)
 
             # Extract components - NO EDGE PRECOMPUTATION
+            # demands/depots are exposed for ALL problems (incl. coordinate-less
+            # EXPLICIT CVRP) so the transformer can build the schema v2 array
+            # columns even when _extract_nodes returns [] (Decision 3).
+            demands, depots = self._extract_demands_depots(problem)
             result = {
                 'problem_data': self._extract_problem_data(problem),
                 'nodes': self._extract_nodes(problem),
@@ -157,6 +161,8 @@ class FormatParser:
                 'metadata': self._extract_metadata(problem, file_path),
                 'edges': [],
                 'fixed_edges': [],
+                'demands': demands,
+                'depots': depots,
             }
 
             # Expose graph data as top-level keys (Decision #4) so the
@@ -475,11 +481,10 @@ class FormatParser:
         return raw_type
 
     def _extract_nodes(self, problem: StandardProblem) -> list[dict[str, Any]]:
-        """Extract node data with coordinates, demands, and depot flags.
+        """Extract node data for coordinate-based problems.
 
-        Converts 1-based TSPLIB node IDs to 0-based database indices. Handles both
-        coordinate-based and explicit weight matrix problems. For VRP, includes
-        demand and depot information.
+        Converts 1-based TSPLIB node IDs to 0-based database indices. Only
+        problems that carry a ``NODE_COORD_SECTION`` produce node rows.
 
         Parameters
         ----------
@@ -491,26 +496,34 @@ class FormatParser:
         list of dict
             Node dictionaries with 0-based indices. Each dict contains:
             - node_id : int - 0-based database index
-            - x, y, z : float or None - Coordinates (if available)
+            - x, y, z : float or None - Coordinates
             - demand : int - Node demand (VRP, 0 for non-VRP)
             - is_depot : bool - Depot flag (VRP only)
-            - display_x, display_y : float or None - Display coordinates (if different)
+            - display_x, display_y : float or None - Display coordinates
 
         Notes
         -----
-        - Returns empty list for problems with only explicit weight matrices
-        - Automatically detects and marks depot nodes for VRP
-        - Handles 2D, 3D, and mixed coordinate types
+        - Returns an EMPTY list for coordinate-less problems (EXPLICIT weight
+          matrices, HCP adjacency-only, SOP fixed-edge problems). The virtual
+          node scaffold that fabricated ``dimension``-many NULL-coordinate rows
+          is removed (Decision 3): those rows carried no information and forced
+          a meaningless ``nodes == dimension`` invariant.
+        - VRP demands/depots are NOT lost for coordinate-less problems: they
+          are exposed as the ``demands``/``depots`` keys on the parse result
+          (see ``_extract_demands_depots``) and routed into the schema v2 array
+          columns by the transformer.
         """
-        nodes = []
-
         # Check if we have node coordinates
-        has_coordinates = hasattr(problem, 'node_coords') and problem.node_coords
+        has_coordinates: IndexedCoordinatesField | Literal[False] = hasattr(problem, 'node_coords') and problem.node_coords
+        if not has_coordinates:
+            return []
+
+        nodes = []
 
         # Extract demands if available (VRP)
         demands = {}
         if hasattr(problem, 'demands') and problem.demands:
-            demands = problem.demands
+            demands: DemandsField = problem.demands
 
         # Extract depot information (VRP)
         depots = set()
@@ -522,46 +535,69 @@ class FormatParser:
         if hasattr(problem, 'display_data') and problem.display_data:
             display_data = problem.display_data
 
-        if has_coordinates:
-            # Process coordinate-based problems (TSP with coordinates)
-            # TSPLIB uses 1-based indexing, convert to 0-based for database
-            for tsplib_node_id, coords in problem.node_coords.items():
-                node_id = tsplib_node_id - 1  # Convert to 0-based
+        # Process coordinate-based problems (TSP with coordinates)
+        # TSPLIB uses 1-based indexing, convert to 0-based for database
+        for tsplib_node_id, coords in problem.node_coords.items():
+            node_id = tsplib_node_id - 1  # Convert to 0-based
 
-                node = {
-                    'node_id': node_id,
-                    'x': coords[0] if len(coords) > 0 else None,
-                    'y': coords[1] if len(coords) > 1 else None,
-                    'z': coords[2] if len(coords) > 2 else None,
-                    'demand': demands.get(tsplib_node_id, 0),
-                    'is_depot': tsplib_node_id in depots,
-                }
+            node = {
+                'node_id': node_id,
+                'x': coords[0] if len(coords) > 0 else None,
+                'y': coords[1] if len(coords) > 1 else None,
+                'z': coords[2] if len(coords) > 2 else None,
+                'demand': demands.get(tsplib_node_id, 0),
+                'is_depot': tsplib_node_id in depots,
+            }
 
-                # Add display coordinates if available
-                if tsplib_node_id in display_data:
-                    display_coords = display_data[tsplib_node_id]
-                    node['display_x'] = display_coords[0] if len(display_coords) > 0 else None
-                    node['display_y'] = display_coords[1] if len(display_coords) > 1 else None
+            # Add display coordinates if available
+            if tsplib_node_id in display_data:
+                display_coords = display_data[tsplib_node_id]
+                node['display_x'] = display_coords[0] if len(display_coords) > 0 else None
+                node['display_y'] = display_coords[1] if len(display_coords) > 1 else None
 
-                nodes.append(node)
-        else:
-            # Process explicit weight matrix problems (no coordinates)
-            # Create virtual nodes based on dimension
-            dimension = getattr(problem, 'dimension', 0)
-            if dimension > 0:
-                for i in range(dimension):
-                    tsplib_node_id = i + 1  # TSPLIB uses 1-based indexing
-                    node = {
-                        'node_id': i,  # 0-based for database
-                        'x': None,     # No coordinates available
-                        'y': None,
-                        'z': None,
-                        'demand': demands.get(tsplib_node_id, 0),
-                        'is_depot': tsplib_node_id in depots,
-                    }
-                    nodes.append(node)
+            nodes.append(node)
 
         return nodes
+
+    def _extract_demands_depots(
+        self, problem: StandardProblem
+    ) -> tuple[list[int], list[int]]:
+        """Extract VRP demands and depots as schema v2 array columns.
+
+        Exposes demands/depots independently of node extraction so coordinate-less EXPLICIT CVRP problems (which have no ``NODE_COORD_SECTION``) still populate ``cvrp_problems.demands`` and ``cvrp_problems.depots``.
+
+        Parameters
+        ----------
+        problem : StandardProblem
+            Parsed TSPLIB95 problem instance
+
+        Returns
+        -------
+        tuple of (list of int, list of int)
+            - demands: list of length ``dimension``, 0-based node index ->
+              demand (0 for nodes without an entry); empty list when the
+              problem has no DEMAND_SECTION.
+            - depots: sorted list of 0-based depot node ids; empty list when
+              the problem has no DEPOT_SECTION.
+        """
+        dimension = int(getattr(problem, 'dimension', 0) or 0)
+
+        demands_raw = {}
+        if hasattr(problem, 'demands') and problem.demands:
+            demands_raw = problem.demands
+        if demands_raw:
+            demands: list[int] = [int(demands_raw.get(i + 1, 0)) for i in range(dimension)]
+        else:
+            demands = []
+
+        depots_raw: Any = []
+        if hasattr(problem, 'depots') and problem.depots:
+            depots_raw = problem.depots
+        if isinstance(depots_raw, list):
+            depots = sorted(int(d) - 1 for d in depots_raw)
+        else:
+            depots: list[int] = [int(depots_raw) - 1]
+        return demands, depots
 
 
     def _extract_tours(self, problem: StandardProblem) -> list[dict[str, Any]]:
@@ -590,7 +626,7 @@ class FormatParser:
         tours = []
 
         if hasattr(problem, 'tours') and problem.tours:
-            for idx, tour in enumerate(problem.tours):
+            for idx, tour in enumerate(iterable=problem.tours):
                 # Remove -1 terminators if present
                 tour_nodes = [node - 1 for node in tour if node != -1]  # Convert to 0-based
                 tours.append({
@@ -617,11 +653,11 @@ class FormatParser:
         list of str
             The trimmed content lines of the section.
         """
-        lines = text.split('\n')
+        lines: list[str] = text.split(sep='\n')
         in_section = False
         content: list[str] = []
         for line in lines:
-            stripped = line.strip()
+            stripped: str = line.strip()
             if not in_section:
                 if stripped == section_name:
                     in_section = True
@@ -636,7 +672,7 @@ class FormatParser:
             # keyword, optionally followed by a colon). ADJ_LIST data lines like
             # "5: 1 2" have a numeric label and are NOT treated as headers.
             if ':' in stripped:
-                header = stripped.split(':', 1)[0].strip()
+                header: str = stripped.split(sep=':', maxsplit=1)[0].strip()
                 if header and any(c.isalpha() for c in header) and all(
                         c.isupper() or c.isdigit() or c == '_' for c in header):
                     break
@@ -680,7 +716,7 @@ class FormatParser:
                     except ValueError:
                         continue
                     for token in to_part.split():
-                        token = token.strip()
+                        token: str = token.strip()
                         if not token or token == '-1':
                             continue
                         try:
@@ -691,10 +727,10 @@ class FormatParser:
 
         # EDGE_LIST format (default): one "from to" pair per line.
         for line in content:
-            line = line.strip()
+            line: str = line.strip()
             if not line or line == '-1':
                 continue
-            parts = line.split()
+            parts: list[str] = line.split()
             if len(parts) >= 2:
                 try:
                     edges.append([int(parts[0]) - 1, int(parts[1]) - 1])
@@ -797,7 +833,7 @@ class FormatParser:
 
         # Check edge weight format for symmetry indicators
         if hasattr(problem, 'edge_weight_format'):
-            symmetric_formats = ['LOWER_DIAG_ROW', 'UPPER_DIAG_ROW', 'LOWER_ROW', 'UPPER_ROW']
+            symmetric_formats: list[str] = ['LOWER_DIAG_ROW', 'UPPER_DIAG_ROW', 'LOWER_ROW', 'UPPER_ROW']
             if problem.edge_weight_format in symmetric_formats:
                 return True
 
