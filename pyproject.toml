@@ -29,16 +29,11 @@ dependencies = [
     "pandas>=2.3.3",
     "psutil>=5.9.0",
     "pyyaml>=6.0",
+    "ruff>=0.16.6",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.4.2",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.5.0",
-]
+dev = ["pytest>=8.4.2", "pytest-cov>=4.0.0", "black>=23.0.0", "mypy>=1.5.0"]
 
 [project.urls]
 Homepage = "https://github.com/lucasgaldinos/Routing_data"
@@ -58,3 +53,50 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = "-v --tb=short"
+
+[tool.setuptools.package-data]
+converter = ["py.typed"]
+tsplib_parser = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+follow_imports = "normal"
+strict = true
+
+# duckdb / psutil / pandas ship no py.typed marker (or partial coverage); skip
+# their stubs so real src errors are not drowned under import-untyped noise.
+[[tool.mypy.overrides]]
+module = ["duckdb", "psutil", "pandas"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+indent-width = 2
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ANN", "S", "RUF", "TCH"]
+ignore = ["ANN401"]                                                # Any is the explicit JSON / data-model boundary
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",
+] # assert is idiomatic in pytest; tests need no annotation mandate
+
+[tool.ruff.lint.isort]
+known-first-party = ["converter", "tsplib_parser"]
+
+[tool.ruff.lint.flake8-annotations]
+mypy-init-return = false          # Enforce return type annotation for __init__ (-> None)
+suppress-dummy-args = false        # Require type annotations even for unused variables (e.g., _arg)
+suppress-none-returning = false   # Force you to explicitly write -> None for functions
+
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+

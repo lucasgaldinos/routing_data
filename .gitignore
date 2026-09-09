@@ -11,3 +11,5 @@ datasets/json/
 logs/
 docs/reference/tsplib95_legacy_docs/
 docs/archive/
+.mypy_*
+.ruff_*

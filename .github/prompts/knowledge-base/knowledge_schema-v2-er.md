@@ -1,13 +1,9 @@
 ---
 title: "Knowledge: Routing_data schema v2 — Mermaid ER diagram"
 description: >
-  Entity-relationship diagram of the implemented schema v2 in
-  `src/converter/database/operations.py` `_initialize_schema`: the thin
-  `problems` hub (Decision 1), five self-contained per-type tables
-  (`tsp_/atsp_/cvrp_/hcp_/sop_problems`, Decision 3 array columns), and three
-  satellites (`edge_weight_matrices`, `solutions`, `file_tracking`, Decision 2).
-  One node per table, one relationship per FK, PKs annotated, `solutions`
-  marked on-hold per the 2026-08-30 ruling (Decision 11 / Deferred).
+  Entity-relationship diagram of the implemented schema v2 in `src/converter/database/operations.py` `_initialize_schema`: the thin `problems` hub (Decision 1, with a `has_solution` flag), five self-contained per-type tables (`tsp_/atsp_/cvrp_/hcp_/sop_problems`, Decision 3 array columns), and two satellites (`edge_weight_matrices`, `file_tracking`, Decision 2).
+  One node per table, one relationship per FK, PKs annotated.
+  The `solutions` satellite is removed from the problems DB (2026-09-07) — solutions arrive later as a separate table joined by `problem_id`.
 created: 2026-08-31
 status: review
 author:
@@ -55,20 +51,15 @@ tags:
 
 ## Objective
 
-The single reviewable picture of the implemented schema v2. The relations
-cannot be read comfortably from the raw SQL in `operations.py`, so this file
-renders them as a Mermaid `erDiagram`: the thin `problems` hub (Decision 1),
-five self-contained per-type tables (Decision 3 — node data as array columns),
-and three satellites (Decision 2). It is the review artifact for any future
-schema change (Task 2.7 Stakeholder Implications).
+The single reviewable picture of the implemented schema v2.
+The relations cannot be read comfortably from the raw SQL in `operations.py`, so this file renders them as a Mermaid `erDiagram`: the thin `problems` hub (Decision 1, with `has_solution`), five self-contained per-type tables (Decision 3 — node data as array columns), and two satellites (Decision 2).
+It is the review artifact for any future schema change (Task 2.7 Stakeholder Implications).
 
 ## How to Use This Knowledge
 
-Open this diagram first before proposing any change to the DDL. Every
-relationship shown must stay traceable to a `REFERENCES` clause in
-`operations.py` `_initialize_schema`. `solutions` is included only because the
-table exists in the DDL — it is **frozen/on-hold** and must not be extended
-until the Deferred solutions-surface work (Decision 11) is revisited.
+Open this diagram first before proposing any change to the DDL.
+Every relationship shown must stay traceable to a `REFERENCES` clause in `operations.py` `_initialize_schema`.
+`solutions` is NOT part of the problems DB (2026-09-07 ruling): it lands later as a separate table joined by `problem_id`, with the hub's `has_solution` flag flipped by that ingestion.
 
 ---
 
@@ -92,14 +83,15 @@ erDiagram
     direction TB
     %% Routing_data schema v2 (source of truth: operations.py _initialize_schema)
     %% Legend — Decision 1 (hub): problems -> each type table
-    %%          Decision 2 (satellites): problems -> matrix/solutions/file_tracking
+    %%          Decision 2 (satellites): problems -> matrix/file_tracking
     %%          Decision 3 (array columns): coords/demands/depots/adjacency/fixed_edges on type tables
-    %%          solutions is FROZEN / on-hold (Decision 11, 2026-08-30) — shown for DDL completeness only
+    %%          solutions is DEFERRED (Decision 11, 2026-09-07) — separate later table, not in the problems DB
 
     problems {
         int id PK "nextval('problems_seq')"
         varchar name "NOT NULL"
         varchar type "NOT NULL CHECK TSP/ATSP/CVRP/HCP/SOP"
+        boolean has_solution "NOT NULL DEFAULT FALSE"
         timestamp created_at
         timestamp updated_at
         %% UNIQUE (name, type) — discovery index
@@ -159,16 +151,6 @@ erDiagram
         int[][] matrix "NOT NULL"
     }
 
-    solutions {
-        int id PK "nextval('solutions_seq')"
-        int problem_id FK "REFERENCES problems(id)"
-        varchar solution_name
-        varchar solution_type
-        double cost "frozen — derivation deferred"
-        int[][] routes "NOT NULL"
-        timestamp created_at
-    }
-
     file_tracking {
         int id PK "nextval('file_tracking_seq')"
         varchar file_path "UNIQUE NOT NULL"
@@ -184,7 +166,6 @@ erDiagram
     problems ||--|| hcp_problems : "owns"
     problems ||--|| sop_problems : "owns"
     problems ||--|| edge_weight_matrices : "owns"
-    problems ||--o{ solutions : "has (FROZEN)"
     problems ||--o{ file_tracking : "has"
 ```
 
@@ -193,9 +174,9 @@ erDiagram
 | Relationship | Tables | Cardinality | Decision |
 | --- | --- | --- | --- |
 | Hub → type table | `problems` → `tsp_/atsp_/cvrp_/hcp_/sop_problems` | 1:1 (`problem_id` PK + FK) | **Decision 1** — thin hub as discovery index; per-type tables self-contained, common columns duplicated |
-| Hub → matrix | `problems` → `edge_weight_matrices` | 1:1 (`problem_id` PK + FK) | **Decision 2** — single satellite, FK → hub |
-| Hub → solutions | `problems` → `solutions` | 1:N (own `id` PK, `problem_id` FK) | **Decision 2** — satellite exists in DDL but **frozen/on-hold** (Decision 11) |
-| Hub → file_tracking | `problems` → `file_tracking` | 1:N (own `id` PK, `problem_id` FK) | **Decision 2** — single satellite, FK → hub |
+| Hub → matrix | `problems` → `edge_weight_matrices` | 1:1 (`problem_id` PK + FK) | **Decision 2** — satellite, FK → hub |
+| Hub → solutions | — | — | **Removed 2026-09-07** — solutions land later as a separate table joined by `problem_id`; `has_solution` on the hub signals presence (Decision 11 / Deferred) |
+| Hub → file_tracking | `problems` → `file_tracking` | 1:N (own `id` PK, `problem_id` FK) | **Decision 2** — satellite, FK → hub |
 | Array columns | `coords`/`display_coords`/`demands`/`depots`/`adjacency`/`fixed_edges` on type tables | — | **Decision 3** — node data as array columns; `nodes` table dropped |
 
 ## 3. FK traceability

@@ -5,18 +5,14 @@ and convert them to TSPLIB95 format.
 """
 
 from .cordeau_converter import CordeauConverter
-from .cordeau_parser import CordeauParser, CordeauParseError
-from .cordeau_types import (
-    CordeauProblem,
-    CordeauNode,
-    CordeauDepotConstraint
-)
+from .cordeau_parser import CordeauParseError, CordeauParser
+from .cordeau_types import CordeauDepotConstraint, CordeauNode, CordeauProblem
 
 __all__ = [
-    'CordeauConverter',
-    'CordeauParser',
-    'CordeauParseError',
-    'CordeauProblem',
-    'CordeauNode',
-    'CordeauDepotConstraint'
+  "CordeauConverter",
+  "CordeauDepotConstraint",
+  "CordeauNode",
+  "CordeauParseError",
+  "CordeauParser",
+  "CordeauProblem",
 ]
