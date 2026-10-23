@@ -7,25 +7,25 @@ Provides both high-level (FormatParser) and low-level (StandardProblem) APIs.
 Architecture
 ------------
 **Primary API** (Recommended):
-    - parser.py: FormatParser class - High-level ETL parsing with validation
+                - parser.py: FormatParser class - High-level ETL parsing with validation
 
 **Low-level API** (Internal/Advanced):
-    - models.py: StandardProblem, Field system - Raw TSPLIB95 parsing
-    - validation.py: Validation functions
-    - matrix.py: Explicit edge-weight matrix reconstruction
-    - cordeau/: Parser + converter for Cordeau MDVRP benchmark files
+                - models.py: StandardProblem, Field system - Raw TSPLIB95 parsing
+                - validation.py: Validation functions
+                - matrix.py: Explicit edge-weight matrix reconstruction
+                - cordeau/: Parser + converter for Cordeau MDVRP benchmark files
 
 **Support Modules**:
-    - exceptions.py: FormatError, ParseError, ValidationError hierarchy
+                - exceptions.py: FormatError, ParseError, ValidationError hierarchy
 
 Primary Usage (Recommended)
 ----------------------------
 ```python
-from tsplib_parser.parser import FormatParser
+from tsplib_parser import FormatParser
 
-parser = FormatParser(logger)
+parser = FormatParser()
 data = parser.parse_file("problem.vrp")
-# Returns: {'problem_data': {...}, 'nodes': [...], 'tours': [...]}
+# Returns: {'problem_data': {...}, 'nodes': [...], 'tours': [...], 'matrix': ...}
 ```
 
 Low-level Usage (Advanced)
@@ -47,27 +47,38 @@ Version & Metadata
 """
 
 from .exceptions import FormatError, ParseError, ValidationError
-from .models import StandardProblem
-from .validation import validate_coordinates, validate_problem_data
+from .models import (
+  PROBLEM_REGISTRY,
+  LKHProblem,
+  StandardProblem,
+  get_problem_class_for_type,
+  register_problem_class,
+)
+from .parser import FormatParser
+from .validation import (
+  check_symmetry,
+  identify_weight_source,
+  validate_coordinates,
+  validate_parse_result,
+  validate_problem_data,
+)
 
 __version__ = "2.0.0"  # Updated for FormatParser refactoring
 __author__ = "TCC Routing Data Project"
 
 __all__: list[str] = [
-  # ========================================================================
-  # PRIMARY API (Recommended)
-  # ========================================================================
-  "FormatError",  # Base exception
-  "ParseError",  # Parsing errors
-  "StandardProblem",  # Core data structure
-  "ValidationError",  # Validation errors
-  # ========================================================================
-  # VALIDATION (Public utilities)
-  # ========================================================================
+  "PROBLEM_REGISTRY",
+  "FormatError",
+  "FormatParser",
+  "LKHProblem",
+  "ParseError",
+  "StandardProblem",
+  "ValidationError",
+  "check_symmetry",
+  "get_problem_class_for_type",
+  "identify_weight_source",
+  "register_problem_class",
   "validate_coordinates",
+  "validate_parse_result",
   "validate_problem_data",
 ]
-
-# Note: FormatParser is imported separately to avoid circular imports:
-#   from tsplib_parser.parser import FormatParser
-# This is the RECOMMENDED high-level API for ETL operations.

@@ -22,10 +22,11 @@ Your primary goal is to **enforce correct behavior**.
 - **DO:** Validate the *actual content* of results.
 - **DO NOT:** Write tests that only check if a dictionary key exists or if a list is not empty.
 - **Good Example:**
+
     ```python
     # BAD: Checks structure only
     assert "dimension" in problem_data
-    
+
     # GOOD: Checks structure AND value
     assert problem_data["dimension"] == 52
     ```
@@ -38,29 +39,30 @@ Your primary goal is to **enforce correct behavior**.
 
 ### 4. 📂 Organization & Naming
 
-- **DO:** Maintain a clear separation:
-  - Unit tests -> `tests/unit/`
-  - Integration tests -> `tests/integration/`
-- **DO NOT:** Mix unit tests (like matrix indexing) and integration tests (like full parsers) in the same file.
-- **DO NOT:** Create empty test files (like `test_parser_basic.py`). Delete them.
+- **DO:** Put each test file in the folder that mirrors the source package it covers: `tests/tsplib_parser/` for the parser, matrix, validation and format adapters; `tests/converter/` for scanner, transformer, database, JSON writer, API and CLI; `tests/e2e/` for the cross-package pipeline that spans both.
+- **DO:** Name files `test_<level>_<module>[_<concern>].py`, where `<level>` is `unit`, `integration`, `e2e` or `performance`, and `<module>` is the source module name (for example `test_unit_parser_robustness.py`, `test_unit_database.py`, `test_integration_cli_commands.py`). The level is declared by the filename; do not duplicate it as a hand-written marker (see `tests/README.md`).
+- **DO NOT:** Create a parallel tree that encodes the same information a second time (for example `tests/unit/` beside `tests/converter/`). One concern, one folder, one level per file.
+- **DO NOT:** Put a cross-package test under one package's folder; it belongs in `tests/e2e/`.
+- **NOTE:** The layout was migrated on 2026-10-20 from `tests/test_format/`, `tests/test_converter/` and `tests/test_integration/`. The stray scripts `test_edge_weights.py`, `test_full_pipeline.py` and `verify_database.py` were deleted; their salvageable assertions were folded into `test_unit_matrix_formats.py` and `tests/e2e/`. The classification rules and marker table live in `tests/README.md`.
 
 ### 5. 🚫 Banned Patterns
 
 - **NO `print()` STATEMENTS:** Use `assert` statements for validation or the `logging` module for debugging output.
 - **NO HARDCODED PATHS:**
-  - **BAD:** `Path("datasets_raw/problems/tsp/gr17.tsp")`
-  - **GOOD:** Use a fixture that provides the path to a test dataset.
+  + **BAD:** `Path("datasets_raw/problems/tsp/gr17.tsp")`
+  + **GOOD:** Use a fixture that provides the path to a test dataset.
 - **USE `pathlib.Path`:** Prefer `pathlib` objects over string-based paths.
 
 ### 6. ⚠️ Error & Exception Testing
 
 - **DO:** Use `pytest.raises` to check both the **type** and the **message content** of an exception.
 - **Good Example:**
+
     ```python
     # BAD: Only checks type
     with pytest.raises(ValueError):
         my_function("bad-input")
-        
+
     # GOOD: Checks type AND message
     with pytest.raises(ValueError, match="Invalid input format"):
         my_function("bad-input")

@@ -75,7 +75,7 @@ That's it! You now have:
 
 ### Prerequisites
 
-- python ≥ 3.11
+- python ≥ 3.12
 - 2GB+ RAM (for processing large files)
 - 1GB+ disk space (for database and JSON output)
 

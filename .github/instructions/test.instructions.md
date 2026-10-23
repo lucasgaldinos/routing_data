@@ -1,5 +1,5 @@
 ---
-applyTo: 'tests/*.py'
+applyTo: 'tests/**/*.py'
 ---
 When writing new tests, ensure:
 

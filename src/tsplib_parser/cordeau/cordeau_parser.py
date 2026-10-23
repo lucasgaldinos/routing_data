@@ -7,10 +7,11 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+from ..exceptions import FormatError
 from .cordeau_types import CordeauDepotConstraint, CordeauNode, CordeauProblem
 
 
-class CordeauParseError(Exception):
+class CordeauParseError(FormatError):
   """Exception raised for Cordeau format parsing errors."""
 
   pass
@@ -73,19 +74,24 @@ class CordeauParser:
 
     try:
       with open(path) as f:
-        lines = [line.strip() for line in f if line.strip()]
+        lines: list[str] = [line.strip() for line in f if line.strip()]
 
       # Parse header
-      header = self._parse_header(lines[0])
+      header: tuple[int, int, int, int] = self._parse_header(lines[0])
       problem_type, num_vehicles, num_customers, num_depots = header
 
       # Parse depot constraints
-      constraints_end = 1 + num_depots
-      depot_constraints = self._parse_depot_constraints(lines[1:constraints_end])
+      constraints_end: int = 1 + num_depots
+      depot_constraints: list[CordeauDepotConstraint] = self._parse_depot_constraints(lines[1:constraints_end])
 
       # Parse nodes (customers + depots)
-      nodes_start = constraints_end
-      nodes_end = nodes_start + num_customers + num_depots
+      nodes_start: int = constraints_end
+      nodes_end: int = nodes_start + num_customers + num_depots
+      if len(lines) != nodes_end:
+        raise CordeauParseError(
+          f"Expected {nodes_end} non-empty lines ({1} header + {num_depots} depot constraints + "
+          f"{num_customers} customers + {num_depots} depots), but got {len(lines)}"
+        )
       nodes = self._parse_nodes(lines[nodes_start:nodes_end], num_customers, num_depots, problem_type)
 
       # Create problem instance
@@ -160,7 +166,7 @@ class CordeauParser:
     List[CordeauDepotConstraint]
         Parsed constraints
     """
-    constraints = []
+    constraints: list[CordeauDepotConstraint] = []
 
     for i, line in enumerate(lines, 1):
       parts: list[str] = line.split()
@@ -201,7 +207,7 @@ class CordeauParser:
         Parsed nodes (customers first, then depots)
     """
     has_time_windows: bool = problem_type >= 4  # VRPTW variants
-    nodes = []
+    nodes: list[CordeauNode] = []
 
     expected_nodes: int = num_customers + num_depots
     if len(lines) != expected_nodes:
@@ -282,7 +288,7 @@ class CordeauParser:
       # Parse visit combinations list
       # The next 'num_combinations' values (or specified in 'a' field)
       # For MDVRP (type=2), typically this is just placeholder values
-      visit_combinations = []
+      visit_combinations: list[int] = []
       list_start = 7
       list_end: int = list_start + num_combinations
 
@@ -299,12 +305,14 @@ class CordeauParser:
       # Parse time windows if present
       earliest_time = None
       latest_time = None
-      if has_time_windows and len(parts) >= 2:
+      if has_time_windows:
+        if len(parts) < 2:
+          raise CordeauParseError(f"Node line {line_num} missing time windows: {line}")
         try:
           earliest_time = float(parts[-2])
           latest_time = float(parts[-1])
-        except (ValueError, IndexError):
-          pass
+        except (ValueError, IndexError) as e:
+          raise CordeauParseError(f"Node line {line_num} has invalid time window values: {line}") from e
 
     except (ValueError, IndexError) as e:
       raise CordeauParseError(f"Node line {line_num} has invalid format: {line}") from e

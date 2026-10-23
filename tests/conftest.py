@@ -2,17 +2,95 @@
 
 import shutil
 import tempfile
-from collections.abc import Generator
+import warnings
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from click.testing import CliRunner
+
+#: Test filename prefix -> level marker. The filename is the single source of
+#: truth; the marker is derived here and never written by hand.
+_LEVEL_PREFIXES: dict[str, str] = {
+  "test_unit_": "unit",
+  "test_integration_": "integration",
+  "test_e2e_": "e2e",
+  "test_performance_": "performance",
+}
+
+
+def level_marker_for(filename: str) -> str | None:
+  """Return the level marker implied by ``filename``, or None when unprefixed."""
+  for prefix, marker in _LEVEL_PREFIXES.items():
+    if filename.startswith(prefix):
+      return marker
+  return None
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+  """Attach the level marker derived from each test filename.
+
+  Files without a recognised prefix are collected anyway and produce one warning
+  per file, so an ad-hoc test is never silently unclassified.
+  """
+  del config
+  warned: set[Path] = set()
+  for item in items:
+    filename: str = item.path.name
+    level: str | None = level_marker_for(filename)
+    if level is None:
+      if item.path not in warned:
+        warned.add(item.path)
+        warnings.warn(
+          f"{item.path} declares no test level; expected one of {', '.join(_LEVEL_PREFIXES)}. No level marker applied.",
+          pytest.PytestWarning,
+          stacklevel=2,
+        )
+      continue
+    if item.get_closest_marker(level) is None:
+      item.add_marker(getattr(pytest.mark, level))
+
+
+def _existing_file(path: Path) -> str:
+  """Return ``path`` as a string, skipping the test when the corpus file is absent."""
+  if not path.exists():
+    pytest.skip(f"Test file not found: {path}")
+  return str(path)
 
 
 @pytest.fixture
 def test_data_dir() -> Path:
-  """Path to test data directory containing TSPLIB files."""
+  """Path to the TSPLIB problem corpus directory."""
   return Path(__file__).parent.parent / "datasets_raw" / "problems"
+
+
+@pytest.fixture
+def datasets_raw_dir(test_data_dir: Path) -> Path:
+  """Path to the raw dataset root (parent of the problem corpus)."""
+  return test_data_dir.parent
+
+
+@pytest.fixture
+def dataset_path(test_data_dir: Path) -> Callable[..., str]:
+  """Build a corpus file path from parts, relative to ``datasets_raw/problems``."""
+
+  def _dataset_path(*parts: str) -> str:
+    return str(test_data_dir.joinpath(*parts))
+
+  return _dataset_path
+
+
+@pytest.fixture
+def tsp_dir(test_data_dir: Path) -> Path:
+  """Directory holding the TSP corpus files."""
+  return test_data_dir / "tsp"
+
+
+@pytest.fixture
+def cli_runner() -> CliRunner:
+  """Click test runner shared by the CLI suites."""
+  return CliRunner()
 
 
 @pytest.fixture
@@ -57,10 +135,37 @@ def vrp_files(test_data_dir: Path) -> dict[str, Path]:
 @pytest.fixture
 def gr17_tsp(test_data_dir: Path) -> str:
   """Path to gr17.tsp test file (17-city TSP, symmetric, EUC_2D)."""
-  tsp_path = test_data_dir / "tsp" / "gr17.tsp"
-  if not tsp_path.exists():
-    pytest.skip(f"Test file not found: {tsp_path}")
-  return str(tsp_path)
+  return _existing_file(test_data_dir / "tsp" / "gr17.tsp")
+
+
+@pytest.fixture
+def berlin52_tsp(test_data_dir: Path) -> str:
+  """Path to berlin52.tsp (52-city TSP with coordinates)."""
+  return _existing_file(test_data_dir / "tsp" / "berlin52.tsp")
+
+
+@pytest.fixture
+def br17_atsp(test_data_dir: Path) -> str:
+  """Path to br17.atsp (17-city FULL_MATRIX ATSP)."""
+  return _existing_file(test_data_dir / "atsp" / "br17.atsp")
+
+
+@pytest.fixture
+def ft53_atsp(test_data_dir: Path) -> str:
+  """Path to ft53.atsp."""
+  return _existing_file(test_data_dir / "atsp" / "ft53.atsp")
+
+
+@pytest.fixture
+def ft70_atsp(test_data_dir: Path) -> str:
+  """Path to ft70.atsp."""
+  return _existing_file(test_data_dir / "atsp" / "ft70.atsp")
+
+
+@pytest.fixture
+def cordeau_mdvrp_dir(datasets_raw_dir: Path) -> Path:
+  """Directory with the Cordeau MDVRP instances."""
+  return datasets_raw_dir / "umalaga" / "mdvrp" / "C-mdvrp"
 
 
 @pytest.fixture
@@ -70,17 +175,6 @@ def temp_output_dir() -> Generator[str, None, None]:
   yield temp_dir
   # Cleanup after test
   shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-@pytest.fixture
-def in_memory_db():
-  """In-memory DuckDB database for testing without file I/O."""
-  from src.converter.database.operations import DatabaseManager
-
-  # Use :memory: for in-memory database
-  db = DatabaseManager(":memory:")
-  yield db
-  # Database automatically cleaned up when object is destroyed
 
 
 @pytest.fixture
@@ -243,6 +337,198 @@ EDGE_DATA_SECTION
 FIXED_EDGES :
   1 2
   3 4
+-1
+EOF
+"""
+
+
+@pytest.fixture
+def comment_inside_sections_content() -> str:
+  """TSP carrying ``#`` comment lines before the keywords and inside
+  NODE_COORD_SECTION. Comments are not part of TSPLIB95, but real files use
+  them; a comment must never reach a field parser.
+  """
+  return """# leading comment before any keyword
+NAME: commented
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+NODE_COORD_SECTION
+# comment inside the coordinate section
+1 0 0
+2 10 0
+3 0 20
+EOF
+"""
+
+
+@pytest.fixture
+def duplicate_demand_content() -> str:
+  """CVRP whose DEMAND_SECTION lists node 2 twice (second row must not win)."""
+  return """NAME: dup_demand
+TYPE: CVRP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+CAPACITY: 10
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+DEMAND_SECTION
+1 0
+2 4
+2 7
+3 5
+DEPOT_SECTION
+1
+-1
+EOF
+"""
+
+
+@pytest.fixture
+def duplicate_coords_content() -> str:
+  """TSP whose NODE_COORD_SECTION repeats node 3 with different coordinates."""
+  return """NAME: dup_coords
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+3 5 5
+EOF
+"""
+
+
+@pytest.fixture
+def function_weight_format_content() -> str:
+  """GEO problem declaring the spec-legal ``EDGE_WEIGHT_FORMAT: FUNCTION``.
+
+  Mirrors the two real corpus instances that use it (``burma14.tsp``,
+  ``gr431.tsp``): the weights come from the distance function, so there is no
+  EDGE_WEIGHT_SECTION.
+  """
+  return """NAME: function_format
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: GEO
+EDGE_WEIGHT_FORMAT: FUNCTION
+NODE_COORD_SECTION
+1 48.23 10.53
+2 49.10 11.20
+3 50.00 12.00
+EOF
+"""
+
+
+@pytest.fixture
+def explicit_function_format_content() -> str:
+  """Problem declaring ``EXPLICIT`` + ``FUNCTION`` (no matrix expected)."""
+  return """NAME: explicit_function
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EXPLICIT
+EDGE_WEIGHT_FORMAT: FUNCTION
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+EOF
+"""
+
+
+@pytest.fixture
+def unregistered_section_content() -> str:
+  """TSP carrying an LKH-3 section (``REQUIRED_NODES_SECTION``) that no field
+  models and the VRP preprocessor does not strip, so it must be reported.
+  """
+  return """NAME: unregistered_section
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+REQUIRED_NODES_SECTION
+1
+3
+-1
+EOF
+"""
+
+
+@pytest.fixture
+def unknown_keyword_extension_content() -> str:
+  """TSP with an unknown non-section keyword (the spec allows extensions)."""
+  return """NAME: keyword_extension
+TYPE: TSP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+MY_EXTENSION: some value
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+EOF
+"""
+
+
+@pytest.fixture
+def time_window_vrp_content() -> str:
+  """CVRP whose ``TIME_WINDOW_SECTION`` is stripped before the core parse
+  (no field models it); the removal must be recorded in the result."""
+  return """NAME: tw_vrp
+TYPE: CVRP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+CAPACITY: 10
+TIME_WINDOW_SECTION
+1 0 100
+2 0 100
+3 0 100
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+DEMAND_SECTION
+1 0
+2 3
+3 5
+DEPOT_SECTION
+1
+-1
+EOF
+"""
+
+
+@pytest.fixture
+def failing_preprocessed_vrp_content() -> str:
+  """CVRP that triggers preprocessing (``TIME_WINDOW_SECTION``) and then
+  fails to parse (poisoned demand row) — used to prove the temporary file is
+  removed even on the failure path.
+  """
+  return """NAME: bad_tw_vrp
+TYPE: CVRP
+DIMENSION: 3
+EDGE_WEIGHT_TYPE: EUC_2D
+CAPACITY: 10
+TIME_WINDOW_SECTION
+1 0 100
+2 0 100
+3 0 100
+NODE_COORD_SECTION
+1 0 0
+2 1 0
+3 0 1
+DEMAND_SECTION
+1 0
+2 BOGUS
+3 5
+DEPOT_SECTION
+1
 -1
 EOF
 """

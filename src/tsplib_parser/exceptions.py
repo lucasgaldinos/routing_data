@@ -13,7 +13,7 @@ Design Principles:
 - Specific subclasses enable retry logic (e.g., retry ParseError, fail on UnsupportedFeatureError)
 """
 
-__all__ = [
+__all__: list[str] = [
   "FormatError",
   "ParseError",
   "UnsupportedFeatureError",

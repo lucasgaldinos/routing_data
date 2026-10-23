@@ -6,9 +6,12 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from queue import Queue
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psutil
+
+if TYPE_CHECKING:
+  from _thread import LockType
 
 
 class ParallelProcessor:
@@ -39,9 +42,9 @@ class ParallelProcessor:
         memory_limit_mb: Memory limit in MB for processing
         logger: Optional logger instance
     """
-    self.max_workers = max_workers
-    self.batch_size = batch_size
-    self.memory_limit_mb = memory_limit_mb
+    self.max_workers: int = max_workers
+    self.batch_size: int = batch_size
+    self.memory_limit_mb: int = memory_limit_mb
     self.logger: logging.Logger = logger or logging.getLogger(__name__)
 
     # Progress tracking
@@ -49,7 +52,7 @@ class ParallelProcessor:
     self._total_items = 0
     self._completed_items = 0
     self._failed_items = 0
-    self._lock = threading.Lock()
+    self._lock: LockType = threading.Lock()
     self._start_time = None
 
   def process_files_parallel(

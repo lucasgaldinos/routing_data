@@ -73,18 +73,18 @@ class Matrix:
     for this matrix format before storing.
     """
     # Validate dimension matches expected size
-    expected_size = self._calculate_expected_size(size)
-    actual_size = len(numbers)
+    expected_size: int = self._calculate_expected_size(size)
+    actual_size: int = len(numbers)
 
     if actual_size != expected_size:
-      matrix_type = self.__class__.__name__
+      matrix_type: str = self.__class__.__name__
       raise exceptions.ParseError(
         f"{matrix_type} with dimension {size} requires {expected_size} elements, but got {actual_size}"
       )
 
-    self.numbers = list(numbers)
-    self.size = size
-    self.min_index = min_index
+    self.numbers: list[int | float] = list(numbers)
+    self.size: int = size
+    self.min_index: int = min_index
 
   @classmethod
   def _calculate_expected_size(cls, dimension: int) -> int:
@@ -120,7 +120,7 @@ class Matrix:
     j -= self.min_index
     if not self.is_valid_row_column(i, j):
       raise IndexError(f"({i}, {j}) is out of bounds")
-    index = self.get_index(i, j)
+    index: int = self.get_index(i, j)
     return self.numbers[index]
 
   def is_valid_row_column(self, i: int, j: int) -> bool:

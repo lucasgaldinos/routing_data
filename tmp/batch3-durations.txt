@@ -1,0 +1,110 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/lucas_galdino/chimera/routing_data
+configfile: pytest.ini
+testpaths: tests
+collected 278 items
+
+tests/converter/test_integration_api.py .............                    [  4%]
+tests/converter/test_integration_cli_commands.py .................       [ 10%]
+tests/converter/test_integration_cli_inspect.py ....                     [ 12%]
+tests/converter/test_integration_pipeline.py ......                      [ 14%]
+tests/converter/test_unit_cost.py ................                       [ 20%]
+tests/converter/test_unit_database.py ..........................         [ 29%]
+tests/converter/test_unit_json_writer.py .....................           [ 37%]
+tests/converter/test_unit_scanner.py .................                   [ 43%]
+tests/converter/test_unit_transformer.py ...........                     [ 47%]
+tests/e2e/test_e2e_pipeline.py .                                         [ 47%]
+tests/tsplib_parser/test_integration_cordeau.py ............             [ 51%]
+tests/tsplib_parser/test_unit_cordeau.py ..................              [ 58%]
+tests/tsplib_parser/test_unit_matrix_formats.py ........................ [ 66%]
+.....                                                                    [ 68%]
+tests/tsplib_parser/test_unit_matrix_value_access.py ............        [ 73%]
+tests/tsplib_parser/test_unit_parser.py ...........                      [ 76%]
+tests/tsplib_parser/test_unit_parser_contract.py ..................      [ 83%]
+tests/tsplib_parser/test_unit_parser_robustness.py .............         [ 88%]
+tests/tsplib_parser/test_unit_parser_section_grammars.py ............... [ 93%]
+.......                                                                  [ 96%]
+tests/tsplib_parser/test_unit_parser_validation.py ...........           [100%]
+
+============================== slowest durations ===============================
+8.35s call     tests/tsplib_parser/test_unit_parser_validation.py::TestCorpusDeclaredVsExtractedConsistency::test_all_corpus_files_match_declared_types_and_dimensions
+6.83s call     tests/tsplib_parser/test_unit_matrix_formats.py::TestRealTSPLIBData::test_corpus_full_matrix_values_match_raw_sections
+0.47s call     tests/converter/test_integration_cli_commands.py::TestProcessCommand::test_process_single_file_sequential
+0.45s call     tests/tsplib_parser/test_unit_parser_robustness.py::TestRealWorldVariants::test_tab_separated_display_data
+0.27s call     tests/converter/test_integration_cli_commands.py::TestProcessCommand::test_process_with_force_flag
+0.20s call     tests/converter/test_integration_cli_commands.py::TestCLIIntegration::test_full_cli_workflow
+0.18s call     tests/converter/test_integration_cli_commands.py::TestAnalyzeCommand::test_analyze_with_type_filter
+0.17s call     tests/converter/test_integration_cli_commands.py::TestAnalyzeCommand::test_analyze_json_format
+0.17s call     tests/converter/test_integration_cli_commands.py::TestAnalyzeCommand::test_analyze_table_format
+0.16s call     tests/converter/test_integration_pipeline.py::TestJSONWriterIntegration::test_batch_write_multiple_files
+0.14s call     tests/converter/test_integration_cli_commands.py::TestValidateCommand::test_validate_successful
+0.14s call     tests/e2e/test_e2e_pipeline.py::test_full_pipeline_scan_parse_transform_write
+0.12s call     tests/converter/test_unit_cost.py::TestXrayCanonicalTour::test_canonical_tour_length[xray2]
+0.12s call     tests/converter/test_integration_cli_commands.py::TestProcessCommand::test_process_with_parallel_mode
+0.12s call     tests/converter/test_integration_cli_commands.py::TestProcessCommand::test_process_with_type_filter
+0.11s setup    tests/converter/test_unit_database.py::TestDatabaseManagerStats::test_get_problem_stats_total_count
+0.11s setup    tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_respects_limit
+0.11s call     tests/converter/test_unit_database.py::TestDatabaseManagerIntegration::test_full_workflow_parse_insert_query
+0.11s call     tests/converter/test_unit_cost.py::TestXrayCanonicalTour::test_canonical_tour_length[xray1]
+0.10s setup    tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_by_dimension_range
+0.10s call     tests/tsplib_parser/test_unit_parser_section_grammars.py::TestNodeCoordinates::test_three_dimensional_coordinates_match_the_file
+0.10s setup    tests/converter/test_unit_database.py::TestDatabaseManagerStats::test_get_problem_stats_by_type
+0.10s setup    tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_all
+0.10s setup    tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_by_type
+0.10s call     tests/converter/test_integration_cli_commands.py::TestCLIIntegration::test_verbose_flag
+0.10s call     tests/converter/test_integration_pipeline.py::TestDatabaseIntegration::test_write_transformed_data_to_database
+0.09s call     tests/converter/test_unit_database.py::TestConnectionLeakFix::test_connection_cleanup_after_failure
+0.09s call     tests/converter/test_unit_database.py::TestConnectionLeakFix::test_parallel_inserts_no_connection_leak
+0.08s call     tests/converter/test_unit_database.py::TestConnectionLeakFix::test_insert_problem_success
+0.07s call     tests/tsplib_parser/test_integration_cordeau.py::TestCordeauIntegration::test_full_pipeline_p01
+0.07s call     tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_problem_increments_id
+0.07s setup    tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_nonexistent_raises_error
+0.06s call     tests/converter/test_unit_database.py::TestConnectionLeakFix::test_edge_weight_insertion_with_transaction
+0.06s call     tests/converter/test_unit_database.py::TestDatabaseManagerFileTracking::test_track_file_stores_info
+0.06s setup    tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_preserves_array_columns
+0.06s setup    tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_returns_complete_data
+0.06s setup    tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_preserves_problem_data
+0.05s call     tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_empty_array_column_roundtrip
+0.05s call     tests/converter/test_unit_database.py::TestConnectionLeakFix::test_insert_problem_rollback_on_invalid_data
+0.05s call     tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_preserves_problem_data
+0.05s call     tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_array_columns_store_vertex_data
+0.04s call     tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_by_dimension_range
+0.04s call     tests/converter/test_unit_database.py::TestDatabaseManagerInitialization::test_initializes_schema
+0.03s call     tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_preserves_problem_data
+0.03s call     tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_returns_complete_data
+0.03s call     tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_preserves_array_columns
+0.03s call     tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_problem_returns_id
+0.03s setup    tests/converter/test_unit_database.py::TestDatabaseManagerIntegration::test_full_workflow_parse_insert_query
+0.03s setup    tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_problem_returns_id
+0.03s setup    tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_empty_array_column_roundtrip
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerInitialization::test_creates_database_file
+0.02s setup    tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_array_columns_store_vertex_data
+0.02s setup    tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_problem_increments_id
+0.02s setup    tests/converter/test_unit_database.py::TestDatabaseManagerInsert::test_insert_preserves_problem_data
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_respects_limit
+0.02s setup    tests/converter/test_unit_database.py::TestDatabaseManagerFileTracking::test_get_file_info_nonexistent_returns_none
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerInitialization::test_creates_database_directory
+0.02s setup    tests/converter/test_unit_database.py::TestDatabaseManagerFileTracking::test_track_file_stores_info
+0.02s call     tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_detail
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerStats::test_get_problem_stats_total_count
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerStats::test_get_problem_stats_by_type
+0.02s setup    tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_specific_table
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_all
+0.02s call     tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_lists_tables
+0.02s setup    tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_lists_tables
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerQuery::test_query_problems_by_type
+0.02s call     tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_specific_table
+0.02s setup    tests/converter/test_integration_cli_inspect.py::TestInspectCommand::test_inspect_detail
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerFileTracking::test_get_file_info_nonexistent_returns_none
+0.02s call     tests/converter/test_unit_database.py::TestDatabaseManagerExport::test_export_problem_nonexistent_raises_error
+0.01s call     tests/tsplib_parser/test_unit_parser_section_grammars.py::TestNodeCoordinates::test_two_dimensional_coordinates_match_the_file
+0.01s call     tests/tsplib_parser/test_unit_parser_section_grammars.py::TestEdgeDataSections::test_edge_list_pairs_match_the_file
+0.01s call     tests/tsplib_parser/test_unit_matrix_formats.py::TestRealTSPLIBData::test_atsp_files_have_asymmetric_data
+0.01s call     tests/tsplib_parser/test_unit_parser_section_grammars.py::TestEdgeWeightSection::test_matrix_values_match_the_file
+0.01s call     tests/tsplib_parser/test_integration_cordeau.py::TestCordeauIntegration::test_transformer_processes_converted[p23]
+0.01s call     tests/tsplib_parser/test_unit_matrix_formats.py::TestMatrixDimensionValidation::test_large_matrix_size_calculation
+0.01s call     tests/tsplib_parser/test_integration_cordeau.py::TestCordeauIntegration::test_tsplib95_parser_accepts_converted[p23]
+
+(757 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================= 278 passed in 21.59s =============================

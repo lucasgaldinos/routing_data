@@ -6,12 +6,13 @@ import itertools
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from tsplib_parser import matrix
 
 if TYPE_CHECKING:
   from tsplib_parser.parser import FormatParser
+  from tsplib_parser.types import ParseResult, ProblemData, TourDict
 
 
 class DataTransformer:
@@ -34,7 +35,7 @@ class DataTransformer:
     """
     self.logger: logging.Logger = logger or logging.getLogger(__name__)
 
-  def transform_problem(self, problem_data: dict[str, Any], file_info: dict[str, Any] | None = None) -> dict[str, Any]:
+  def transform_problem(self, problem_data: ParseResult, file_info: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Transform parsed problem data for storage.
 
@@ -45,13 +46,10 @@ class DataTransformer:
     Returns:
         Transformed data ready for storage
     """
-    # Extract components
-    problem_meta = problem_data.get("problem_data", {})
-    nodes = problem_data.get("nodes", [])
-    tours = problem_data.get("tours", [])
-    metadata = problem_data.get("metadata", {})
+    problem_meta: dict[str, Any] = dict(problem_data["problem_data"])
+    tours: list[TourDict] = problem_data["tours"]
+    metadata: dict[str, Any] = dict(problem_data["metadata"])
 
-    # Add file info to metadata if provided
     if file_info:
       metadata.update(
         {
@@ -61,17 +59,12 @@ class DataTransformer:
         }
       )
 
-    # Ensure all nodes have required fields
-    normalized_nodes: list[dict[str, Any]] = self._normalize_nodes(nodes)
-
-    # Schema v2 array-column payload (Decision 3). coords / display_coords
-    # derive from the normalized nodes; demands / depots come from the
-    # parser, which exposes them even for coordinate-less problems (e.g.
-    # EXPLICIT CVRP — see parser._extract_nodes).
-    coords: list[list[float]] | None = self._build_coords(nodes=normalized_nodes)
-    display_coords: list[list[float]] | None = self._build_display_coords(nodes=normalized_nodes)
-    demands = problem_data.get("demands", [])
-    depots = problem_data.get("depots", [])
+    coords_raw: list[list[float]] = problem_data["coords"]
+    display_coords_raw: list[list[float]] = problem_data["display_coords"]
+    coords: list[list[float]] | None = [list(row) for row in coords_raw] if coords_raw else None
+    display_coords: list[list[float]] | None = [list(row) for row in display_coords_raw] if display_coords_raw else None
+    demands: list[int] = problem_data["demands"]
+    depots: list[int] = problem_data["depots"]
 
     # Process edge weights if present (EXPLICIT problems)
     edge_weight_matrix: list[list[float]] | None = None
@@ -79,30 +72,22 @@ class DataTransformer:
       try:
         edge_weight_matrix = self._convert_edge_weights_to_matrix(
           edge_weights=problem_meta["edge_weights"],
-          edge_weight_format=problem_meta.get("edge_weight_format"),
-          dimension=problem_meta.get("dimension"),
-          problem_type=problem_meta.get("type"),
+          edge_weight_format=cast("str", problem_meta.get("edge_weight_format")),
+          dimension=cast("int", problem_meta.get("dimension")),
         )
         self.logger.info(f"Converted edge weights to {len(edge_weight_matrix)}x{len(edge_weight_matrix[0])} matrix")
       except Exception as e:
         self.logger.warning(msg=f"Failed to convert edge weights: {e}")
-        # Re-raise in debug mode for troubleshooting
         import traceback
 
         self.logger.debug(msg=traceback.format_exc())
         edge_weight_matrix = None
 
-      # Remove raw edge_weights from problem_meta (don't store parsed data)
       del problem_meta["edge_weights"]
 
-    # Carry graph data through unchanged (Decision #4): edges/fixed_edges
-    # are top-level keys on the parser result, siblings of problem_data.
-    edges: Any | None = problem_data.get("edges")
-    fixed_edges: Any | None = problem_data.get("fixed_edges")
+    edges: list[list[int]] = problem_data["edges"]
+    fixed_edges: list[list[int]] = problem_data["fixed_edges"]
 
-    # Build final structure. Schema v2 payload (Decision 3): the v1 ``nodes``
-    # row-list is gone — node data is carried as array columns (coords /
-    # display_coords / demands / depots) and graph data as edges / fixed_edges.
     result: dict[str, Any] = {
       "problem_data": self._enrich_problem_data(problem_meta, metadata),
       "tours": tours,
@@ -115,78 +100,16 @@ class DataTransformer:
       "depots": depots,
     }
 
-    # Add edge weight matrix if converted successfully
     if edge_weight_matrix is not None:
       result["edge_weight_matrix"] = edge_weight_matrix
 
     return result
-
-  def _build_coords(self, nodes: list[dict[str, Any]]) -> list[list[float]] | None:
-    """Build the ``coords`` array column from normalized nodes.
-
-    Returns ``None`` when the problem has no coordinates (EXPLICIT weight
-    problems — the matrix row in ``edge_weight_matrices`` holds the data,
-    so ``coords`` stays NULL). Nodes are emitted in 0-based ``node_id``
-    order; 2D and 3D coordinates are preserved.
-    """
-    coord_rows: list[list[float]] = []
-    for node in sorted(nodes, key=lambda n: n.get("node_id", 0)):
-      x: Any | None = node.get("x")
-      y: Any | None = node.get("y")
-      if x is None or y is None:
-        return None
-      row: list[float] = [x, y]
-      z: Any | None = node.get("z")
-      if z is not None:
-        row.append(z)
-      coord_rows.append(row)
-    return coord_rows or None
-
-  def _build_display_coords(self, nodes: list[dict[str, Any]]) -> list[list[float]] | None:
-    """Build the ``display_coords`` array column from normalized nodes.
-
-    Returns ``None`` when no node carries display coordinates (the common
-    case — ``DISPLAY_DATA_SECTION`` is optional in TSPLIB).
-    """
-    display_rows: list[list[float]] = []
-    for node in sorted(nodes, key=lambda n: n.get("node_id", 0)):
-      dx: Any | None = node.get("display_x")
-      dy: Any | None = node.get("display_y")
-      if dx is None or dy is None:
-        continue
-      display_rows.append([dx, dy])
-    return display_rows or None
-
-  def _normalize_nodes(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Normalize node data with consistent field structure.
-
-    Args:
-        nodes: list of node dictionaries
-
-    Returns:
-        list of normalized node dictionaries
-    """
-    return [
-      {
-        "node_id": node.get("node_id", 0),
-        "x": node.get("x"),
-        "y": node.get("y"),
-        "z": node.get("z"),
-        "demand": node.get("demand", 0),
-        "is_depot": node.get("is_depot", False),
-        "display_x": node.get("display_x"),
-        "display_y": node.get("display_y"),
-      }
-      for node in nodes
-    ]
 
   def _convert_edge_weights_to_matrix(
     self,
     edge_weights: matrix.Matrix | list[list[float]],
     edge_weight_format: str,
     dimension: int,
-    problem_type: str | None = None,
   ) -> list[list[float]]:
     """Convert edge weights to full 2D matrix.
 
@@ -194,66 +117,35 @@ class DataTransformer:
         edge_weights: Matrix object or list[list[float]] from parser
         edge_weight_format: Matrix format (FULL_MATRIX, LOWER_DIAG_ROW, etc.)
         dimension: Problem dimension (number of nodes)
-        problem_type: Problem type (e.g. 'CVRP', 'VRP'). When set and the
-            reconstructed matrix is (n-1)x(n-1), it is expanded to nxn with
-            a zeroed depot row/col (Decision #5).
 
     Returns:
         Full 2D matrix as list of lists (dimension x dimension)
     """
-    # If already a Matrix object, extract full 2D matrix directly
     if isinstance(edge_weights, matrix.Matrix):
-      # Use the matrix's actual size (may differ from dimension for VRP customer-only matrices)
-      matrix_size = edge_weights.size
-      matrix_2d = [[edge_weights.value_at(i, j) for j in range(matrix_size)] for i in range(matrix_size)]
+      matrix_size: int = edge_weights.size
+      matrix_2d: list[list[int | float]] = [
+        [edge_weights.value_at(i, j) for j in range(matrix_size)] for i in range(matrix_size)
+      ]
       self.logger.debug(
         f"Extracted matrix from Matrix object: format={edge_weight_format}, "
         f"problem_dimension={dimension}, matrix_size={matrix_size}"
       )
-      return self._expand_vrp_matrix(matrix_2d, problem_type, dimension)
+      return matrix_2d
 
-    # Otherwise, handle list[list] (legacy path)
     weights: list[Any] = list(itertools.chain(*edge_weights))
 
     self.logger.debug(
       msg=f"Converting edge weights: format={edge_weight_format}, dimension={dimension}, total_weights={len(weights)}"
     )
 
-    # Get appropriate Matrix class for format
     if edge_weight_format not in matrix.TYPES:
       raise ValueError(f"Unsupported edge weight format: {edge_weight_format}. Supported: {list(matrix.TYPES.keys())}")
 
     MatrixClass = matrix.TYPES[edge_weight_format]
-
-    # Create Matrix instance (0-based indexing for database)
     m = MatrixClass(weights, dimension, min_index=0)
-
-    # Extract full 2D matrix
     matrix_2d = [[m.value_at(i, j) for j in range(dimension)] for i in range(dimension)]
 
     self.logger.debug(f"Successfully converted to {dimension}x{dimension} matrix")
-
-    return self._expand_vrp_matrix(matrix_2d, problem_type, dimension)
-
-  def _expand_vrp_matrix(
-    self, matrix_2d: list[list[float]], problem_type: str | None, dimension: int
-  ) -> list[list[float]]:
-    """
-    Expand a customer-only (n-1)x(n-1) VRP matrix to nxn.
-
-    Decision #5: CVRP files (eil7/eil13/eil31) carry customer-only
-    matrices. The depot row/col is zeroed at index 0.
-    """
-    if problem_type in ("CVRP", "VRP") and matrix_2d and len(matrix_2d) == dimension - 1:
-      n: int = dimension
-      expanded: list[list[float]] = [[0.0] * n for _ in range(n)]
-      for i, row in enumerate(iterable=matrix_2d):
-        for j, val in enumerate(iterable=row):
-          expanded[i + 1][j + 1] = val
-      self.logger.debug(
-        msg=f"Expanded VRP matrix from {len(matrix_2d)}x{len(matrix_2d)} to {n}x{n} with zeroed depot row/col"
-      )
-      return expanded
     return matrix_2d
 
   def _enrich_problem_data(self, problem_meta: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
@@ -269,7 +161,6 @@ class DataTransformer:
     """
     enriched: dict[str, Any] = problem_meta.copy()
 
-    # Add file path and size from metadata
     if "file_path" in metadata:
       enriched["file_path"] = metadata["file_path"]
     if "file_size" in metadata:
@@ -287,17 +178,12 @@ class DataTransformer:
     Returns:
         Data in JSON-friendly format
     """
-    # Flattened structure for JSON. Schema v2 (Decision 3): the v1 ``nodes``
-    # list is no longer emitted — node / graph data is carried as the
-    # array-column keys (coords / display_coords / demands / depots / edges /
-    # fixed_edges) produced by ``transform_problem``, so no node data is lost.
     json_data: dict[str, Any] = {
       "problem": data.get("problem_data", {}),
       "tours": data.get("tours", []),
       "metadata": data.get("metadata", {}),
     }
 
-    # Forward the schema-v2 array-column payload unchanged when present
     for key in ("coords", "display_coords", "demands", "depots", "edges", "fixed_edges"):
       if key in data:
         json_data[key] = data[key]
@@ -314,25 +200,24 @@ class DataTransformer:
     Returns:
         list of validation error messages (empty if valid)
     """
-    errors: list[Any] = []
+    errors: list[str] = []
 
-    # Check required fields in problem_data using comprehension
     problem_data = data.get("problem_data", {})
-    required_fields = {
+    required_fields: dict[str, str] = {
       "name": "Problem name is required",
       "type": "Problem type is required",
       "dimension": "Problem dimension is required",
     }
     errors.extend(msg for field, msg in required_fields.items() if not problem_data.get(field))
 
-    # Validate node IDs are sequential
-    nodes = data.get("nodes", [])
-    if nodes:
-      node_ids = [node.get("node_id") for node in nodes]
-      if node_ids != list(range(len(node_ids))):
-        errors.append("Node IDs are not sequential starting from 0")
-
-    # NO EDGE VALIDATION - edges are not precomputed
+    dimension = problem_data.get("dimension")
+    if isinstance(dimension, int) and dimension > 0:
+      coords = data.get("coords")
+      if coords is not None and len(coords) != dimension:
+        errors.append(f"coords length ({len(coords)}) does not match dimension ({dimension})")
+      display_coords = data.get("display_coords")
+      if display_coords is not None and len(display_coords) != dimension:
+        errors.append(f"display_coords length ({len(display_coords)}) does not match dimension ({dimension})")
 
     return errors
 
@@ -427,11 +312,11 @@ class DataTransformer:
       if not has_dimension and problem_dimension is not None:
         import tempfile
 
-        injected_text = f"DIMENSION : {problem_dimension}\n{raw_text}"
+        injected_text: str = f"DIMENSION : {problem_dimension}\n{raw_text}"
         tmp: Any = tempfile.NamedTemporaryFile(mode="w", suffix=".tour", delete=False, encoding="utf-8")
         tmp.write(injected_text)
         tmp.close()
-        temp_path = tmp.name
+        temp_path = str(tmp.name)
         parse_target = temp_path
         self.logger.debug(msg=f"Pre-injected DIMENSION : {problem_dimension} into {tour_file_path}")
 
@@ -443,20 +328,21 @@ class DataTransformer:
           Path(temp_path).unlink(missing_ok=True)
 
       # Extract solution information
-      problem_data = tour_data.get("problem_data", {})
-      tours = tour_data.get("tours", [])
+      problem_data: ProblemData = tour_data["problem_data"]
+      tours: list[TourDict] = tour_data["tours"]
 
       if not tours:
         self.logger.warning(f"No tours found in {tour_file_path}")
         return None
 
       # Extract cost from comment if available
-      comment = problem_data.get("comment", "")
+      comment: str = problem_data.get("comment") or ""
       cost: float | None = self._extract_cost_from_comment(comment)
 
-      # Get first tour - tours is list of dicts with 'tour_id' and 'nodes'
-      first_tour = tours[0] if tours else {}
-      tour_nodes = first_tour.get("nodes", []) if isinstance(first_tour, dict) else first_tour
+      # Get first tour - tours is list of dicts with 'tour_id' and 'nodes'.
+      # `validate_parse_result` guarantees each entry is a TourDict.
+      first_tour: TourDict = tours[0]
+      tour_nodes: list[int] = first_tour["nodes"]
 
       # Note: parser.parse_file() already returns 0-based node indices
       # (see _extract_tours in parser.py), so no re-conversion is needed here.
@@ -495,7 +381,7 @@ class DataTransformer:
     """
     try:
       with open(sol_file_path) as f:
-        content = f.read()
+        content: str = f.read()
 
       # Extract all routes using regex
       route_pattern = r"Route #\d+:\s*([\d\s]+)"
@@ -507,20 +393,25 @@ class DataTransformer:
 
       # Parse each route (convert space-separated nodes to list of ints)
       # CRITICAL: Convert from 1-based to 0-based indexing
-      routes = []
+      routes: list[list[int]] = []
       for route_str in route_matches:
-        nodes = [int(n) - 1 for n in route_str.split()]  # Subtract 1 for 0-based indexing
+        nodes: list[int] = [int(n) - 1 for n in route_str.split()]  # Subtract 1 for 0-based indexing
         routes.append(nodes)
 
       # Extract cost
       cost = None
-      cost_match = re.search(r"Cost\s+([\d.]+)", content)
+      cost_match: re.Match[str] | None = re.search(r"Cost\s+([\d.]+)", content)
       if cost_match:
         cost = float(cost_match.group(1))
 
-      solution_data = {"name": Path(sol_file_path).stem, "type": "VRP", "cost": cost, "routes": routes}
+      solution_data: dict[str, Any] = {
+        "name": Path(sol_file_path).stem,
+        "type": "VRP",
+        "cost": cost,
+        "routes": routes,
+      }
 
-      total_nodes = sum(len(route) for route in routes)
+      total_nodes: int = sum(len(route) for route in routes)
       self.logger.info(f"Parsed .sol: {len(routes)} routes, {total_nodes} nodes, cost={cost}")
       return solution_data
 

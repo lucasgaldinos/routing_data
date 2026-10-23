@@ -24,7 +24,7 @@ tags: [guide/readme, notes/project, guide/setup, guide/cli, guide/database, anal
 
 ![Tests](https://img.shields.io/badge/tests-134%2F134%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-63%25-yellow)
-![python](https://img.shields.io/badge/python-3.11%2B-blue)
+![python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 **High-performance ETL pipeline for converting TSPLIB95 routing problem instances to queryable database and analytics-ready formats.**
@@ -44,7 +44,7 @@ Transforms academic routing problem benchmarks (TSP, VRP, ATSP, HCP, SOP) from t
 - ✅ **Change detection**: Only process modified files
 - ✅ **Hybrid storage**: Coordinates + distance matrices
 - ✅ **Dual output**: DuckDB + JSON + Parquet
-- ✅ **134/134 tests passing** with 63% coverage
+- ✅ **287/287 tests passing** with 63% coverage (coverage not re-measured on 2026-10-20)
 
 ## 📦 Installation
 
@@ -60,7 +60,7 @@ uv sync
 pip install -r requirements.txt
 ```
 
-**Requirements**: python 3.11+, DuckDB, pandas
+**Requirements**: python 3.12+, DuckDB, pandas
 
 ## 🚀 Quick Start
 
@@ -215,7 +215,7 @@ Phase 1: PARSE                Phase 2: TRANSFORM            Phase 3: LOAD
 ## 🧪 Testing
 
 ```bash
-# Run all tests (134 tests)
+# Run all tests (287 tests)
 uv run pytest tests/ -v
 
 # Run with coverage report
@@ -224,17 +224,18 @@ uv run pytest tests/ --cov=src --cov-report=term-missing
 # Quick test run
 uv run pytest tests/ -q
 
-# Run specific test category
-uv run pytest tests/test_format/ -v        # Format module (24 tests)
-uv run pytest tests/test_converter/ -v    # Converter module (85 tests)
-uv run pytest tests/test_integration/ -v  # Integration (25 tests)
+# Run one package (layout mirrors src; see tests/README.md)
+uv run pytest tests/tsplib_parser/ -v   # Parser package (146 tests)
+uv run pytest tests/converter/ -v       # Converter package (131 tests)
+uv run pytest tests/e2e/ -v             # Cross-package chain (1 test)
+uv run pytest tests/test_unit_conftest.py -v  # Test infrastructure (9 tests)
 ```
 
 **Test Suite Overview**:
 
-- **Total Tests**: 134 ✅
-- **Pass Rate**: 100% (134/134)
-- **Code Coverage**: 63% (Core modules: 80-100%)
+- **Total Tests**: 287 ✅
+- **Pass Rate**: 100% (287/287)
+- **Code Coverage**: last measured at 63% overall (core modules 80-100%); not re-measured during the 2026-10-20 test reorganization.
 
 **Core Module Coverage**:
 
@@ -386,4 +387,4 @@ MIT License.
 
 ---
 
-**Status**: Production-ready. 134/134 tests passing. Optimized for performance (27x speedup).
+**Status**: Production-ready. 287/287 tests passing. Optimized for performance (27x speedup).

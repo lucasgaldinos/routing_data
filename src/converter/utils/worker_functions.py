@@ -14,6 +14,8 @@ if TYPE_CHECKING:
   from _hashlib import HASH
   from logging import Logger
 
+  from tsplib_parser.types import ParseResult
+
 
 def process_file_for_parallel(file_path: str, output_dir: str) -> dict[str, Any]:
   """
@@ -59,7 +61,7 @@ def process_file_for_parallel(file_path: str, output_dir: str) -> dict[str, Any]
 
     # Step 1: Parse file (CPU-bound)
     logger.info(msg=f"Processing new file: {file_path}")
-    parsed_result: dict[str, Any] = parser.parse_file(file_path)
+    parsed_result: ParseResult = parser.parse_file(file_path)
 
     # Step 2: Transform data (CPU-bound)
     transformed_data: dict[str, Any] = transformer.transform_problem(problem_data=parsed_result)

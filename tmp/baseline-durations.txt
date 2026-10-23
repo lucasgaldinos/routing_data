@@ -1,0 +1,122 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/lucas_galdino/chimera/routing_data
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+testpaths: tests
+collected 278 items
+
+tests/test_converter/test_converter_api.py .............                 [  4%]
+tests/test_converter/test_cost.py ................                       [ 10%]
+tests/test_converter/test_database.py .....................              [ 17%]
+tests/test_converter/test_database_connection_leak.py .....              [ 19%]
+tests/test_converter/test_formats/test_cordeau.py ...................... [ 27%]
+........                                                                 [ 30%]
+tests/test_converter/test_json_writer.py ....F............               [ 36%]
+tests/test_converter/test_json_writing_fixes.py ....                     [ 38%]
+tests/test_converter/test_scanner.py .................                   [ 44%]
+tests/test_converter/test_transformer.py ...........                     [ 48%]
+tests/test_format/test_format_parser.py ...........                      [ 52%]
+tests/test_format/test_matrix_equivalence.py .........s....              [ 57%]
+tests/test_format/test_matrix_validation.py ..............               [ 62%]
+tests/test_format/test_matrix_value_access.py ............               [ 66%]
+tests/test_format/test_parser_contract.py ..................             [ 73%]
+tests/test_format/test_parser_robustness.py .............                [ 77%]
+tests/test_format/test_problem_validation_and_consistency.py ........... [ 81%]
+                                                                         [ 81%]
+tests/test_format/test_section_grammars.py ......................        [ 89%]
+tests/test_integration/test_cli.py .................                     [ 95%]
+tests/test_integration/test_inspect.py ....                              [ 97%]
+tests/test_integration/test_pipeline.py ..FFF.FF                         [100%]
+
+============================== slowest durations ===============================
+8.79s call     tests/test_format/test_problem_validation_and_consistency.py::TestCorpusDeclaredVsExtractedConsistency::test_all_corpus_files_match_declared_types_and_dimensions
+7.36s call     tests/test_integration/test_pipeline.py::TestParserTransformerIntegration::test_parse_transform_multiple_files
+0.60s call     tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_problem_returns_id
+0.51s call     tests/test_format/test_parser_robustness.py::TestRealWorldVariants::test_tab_separated_display_data
+0.29s call     tests/test_integration/test_pipeline.py::TestFullPipelineIntegration::test_full_pipeline_scan_parse_transform_write
+0.21s call     tests/test_integration/test_cli.py::TestCLIIntegration::test_full_cli_workflow
+0.18s call     tests/test_integration/test_pipeline.py::TestJSONWriterIntegration::test_batch_write_multiple_files
+0.18s call     tests/test_integration/test_cli.py::TestAnalyzeCommand::test_analyze_json_format
+0.17s call     tests/test_integration/test_cli.py::TestAnalyzeCommand::test_analyze_with_type_filter
+0.17s call     tests/test_integration/test_cli.py::TestAnalyzeCommand::test_analyze_table_format
+0.17s call     tests/test_integration/test_cli.py::TestProcessCommand::test_process_with_force_flag
+0.16s setup    tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_by_dimension_range
+0.15s call     tests/test_integration/test_cli.py::TestValidateCommand::test_validate_successful
+0.14s setup    tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_by_type
+0.12s call     tests/test_converter/test_cost.py::TestXrayCanonicalTour::test_canonical_tour_length[xray1]
+0.12s call     tests/test_converter/test_cost.py::TestXrayCanonicalTour::test_canonical_tour_length[xray2]
+0.12s call     tests/test_converter/test_database.py::TestDatabaseManagerIntegration::test_full_workflow_parse_insert_query
+0.12s setup    tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_respects_limit
+0.11s setup    tests/test_converter/test_database.py::TestDatabaseManagerStats::test_get_problem_stats_by_type
+0.11s setup    tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_all
+0.11s setup    tests/test_converter/test_database.py::TestDatabaseManagerStats::test_get_problem_stats_total_count
+0.11s call     tests/test_converter/test_database_connection_leak.py::TestConnectionLeakFix::test_parallel_inserts_no_connection_leak
+0.11s call     tests/test_format/test_section_grammars.py::TestNodeCoordinates::test_three_dimensional_coordinates_match_the_file
+0.11s call     tests/test_integration/test_cli.py::TestCLIIntegration::test_verbose_flag
+0.10s call     tests/test_integration/test_cli.py::TestProcessCommand::test_process_with_parallel_mode
+0.10s call     tests/test_integration/test_cli.py::TestProcessCommand::test_process_single_file_sequential
+0.10s call     tests/test_integration/test_cli.py::TestProcessCommand::test_process_with_type_filter
+0.10s call     tests/test_converter/test_database_connection_leak.py::TestConnectionLeakFix::test_connection_cleanup_after_failure
+0.09s call     tests/test_converter/test_database_connection_leak.py::TestConnectionLeakFix::test_insert_problem_success
+0.09s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauIntegration::test_full_pipeline_p01
+0.08s call     tests/test_converter/test_database_connection_leak.py::TestConnectionLeakFix::test_edge_weight_insertion_with_transaction
+0.08s call     tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_problem_increments_id
+0.07s call     tests/test_converter/test_database_connection_leak.py::TestConnectionLeakFix::test_insert_problem_rollback_on_invalid_data
+0.07s call     tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_empty_array_column_roundtrip
+0.07s call     tests/test_converter/test_database.py::TestDatabaseManagerFileTracking::test_track_file_stores_info
+0.06s setup    tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_preserves_problem_data
+0.06s call     tests/test_integration/test_pipeline.py::TestDatabaseIntegration::test_write_transformed_data_to_database
+0.06s setup    tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_returns_complete_data
+0.06s setup    tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_preserves_array_columns
+0.06s setup    tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_nonexistent_raises_error
+0.05s call     tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_by_dimension_range
+0.05s call     tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_array_columns_store_vertex_data
+0.05s call     tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_preserves_problem_data
+0.04s call     tests/test_converter/test_database.py::TestDatabaseManagerInitialization::test_initializes_schema
+0.04s call     tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_preserves_problem_data
+0.04s call     tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_returns_complete_data
+0.04s call     tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_preserves_array_columns
+0.03s setup    tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_empty_array_column_roundtrip
+0.03s setup    tests/test_converter/test_database.py::TestDatabaseManagerFileTracking::test_get_file_info_nonexistent_returns_none
+0.03s call     tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_by_type
+0.03s call     tests/test_converter/test_database.py::TestDatabaseManagerInitialization::test_creates_database_file
+0.03s setup    tests/test_converter/test_database.py::TestDatabaseManagerFileTracking::test_track_file_stores_info
+0.02s setup    tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_problem_returns_id
+0.02s setup    tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_problem_increments_id
+0.02s setup    tests/test_converter/test_database.py::TestDatabaseManagerIntegration::test_full_workflow_parse_insert_query
+0.02s setup    tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_insert_preserves_problem_data
+0.02s setup    tests/test_converter/test_database.py::TestDatabaseManagerInsert::test_array_columns_store_vertex_data
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_all
+0.02s call     tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_detail
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerExport::test_export_problem_nonexistent_raises_error
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerInitialization::test_creates_database_directory
+0.02s setup    tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_detail
+0.02s setup    tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_lists_tables
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerStats::test_get_problem_stats_total_count
+0.02s call     tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_specific_table
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerQuery::test_query_problems_respects_limit
+0.02s call     tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_lists_tables
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerStats::test_get_problem_stats_by_type
+0.02s call     tests/test_format/test_matrix_equivalence.py::TestRealTSPLIBData::test_atsp_files_have_asymmetric_data
+0.02s setup    tests/test_integration/test_inspect.py::TestInspectCommand::test_inspect_specific_table
+0.02s call     tests/test_converter/test_database.py::TestDatabaseManagerFileTracking::test_get_file_info_nonexistent_returns_none
+0.01s call     tests/test_format/test_section_grammars.py::TestNodeCoordinates::test_two_dimensional_coordinates_match_the_file
+0.01s call     tests/test_format/test_matrix_validation.py::TestMatrixDimensionValidation::test_large_matrix_size_calculation
+0.01s call     tests/test_format/test_section_grammars.py::TestEdgeDataSections::test_edge_list_pairs_match_the_file
+0.01s call     tests/test_integration/test_cli.py::TestCLIBasic::test_cli_help
+0.01s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauParser::test_parse_file[p03]
+0.01s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauIntegration::test_transformer_processes_converted[p08]
+0.01s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauIntegration::test_tsplib95_parser_accepts_converted[p08]
+0.01s call     tests/test_format/test_section_grammars.py::TestEdgeWeightSection::test_matrix_values_match_the_file
+0.01s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauIntegration::test_transformer_processes_converted[pr05]
+0.01s call     tests/test_converter/test_formats/test_cordeau.py::TestCordeauIntegration::test_transformer_processes_converted[p23]
+
+(752 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED tests/test_converter/test_json_writer.py::TestJSONWriterContent::test_written_json_has_correct_structure
+FAILED tests/test_integration/test_pipeline.py::TestParserTransformerIntegration::test_parse_and_transform_gr17
+FAILED tests/test_integration/test_pipeline.py::TestParserTransformerIntegration::test_parse_transform_multiple_files
+FAILED tests/test_integration/test_pipeline.py::TestJSONWriterIntegration::test_write_transformed_data_to_json
+FAILED tests/test_integration/test_pipeline.py::TestDatabaseIntegration::test_write_transformed_data_to_database
+FAILED tests/test_integration/test_pipeline.py::TestFullPipelineIntegration::test_full_pipeline_scan_parse_transform_write
+================== 6 failed, 271 passed, 1 skipped in 23.10s ===================

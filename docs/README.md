@@ -46,6 +46,7 @@ tags: [guide/documentation, notes/index, guide/setup, guide/cli, guide/database,
 | ---------- | --------- | ---------- |
 | **[API Reference](guides/USER_GUIDE.md)** | Complete programmatic interface | Developers |
 | **[Architecture Guide](reference/ARCHITECTURE_DECISIONS.md)** | System design & technical decisions | Architects, developers |
+| **[Architecture Blueprint](ARCHITECTURE.md)** | Module map, parse pipeline, data contract, extension points | Architects, developers |
 
 ### 🛠️ **Development** (`development/`)
 
@@ -122,7 +123,7 @@ TSPLIB Files → Parser → Transformer → [JSON + DuckDB Database]
 
 ### Technology Stack
 
-- **Language**: python 3.11+
+- **Language**: python 3.12+
 - **Dependencies**: DuckDB, tsplib95 (vendored)
 - **Package Manager**: uv (modern python packaging)
 - **Database**: DuckDB (embedded analytics)
