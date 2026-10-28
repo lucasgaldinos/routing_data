@@ -74,22 +74,22 @@ class TestCordeauIntegration:
     # Parse Cordeau file
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / filename)
 
-    # Convert to TSPLIB95 file
+    # Convert to the TSPLIB-extended dialect
     output_path: Path = temp_converted_dir / f"{filename}.vrp"
-    cordeau_converter.to_tsplib95(problem, output_path=output_path)
+    cordeau_converter.to_tsplib(problem, output_path=output_path)
 
     # Parse with existing TSPLIB95 parser
     parsed_data: ParseResult = format_parser.parse_file(file_path=output_path)
 
-    # Validate parsed data
+    # The real type survives the round trip, and so do the depots. The removed
+    # CVRP surrogate reported one depot and one flattened capacity instead.
     assert parsed_data is not None
     assert "problem_data" in parsed_data
     assert parsed_data["problem_data"]["name"] == filename
-    assert parsed_data["problem_data"]["type"] == "CVRP"
+    assert parsed_data["problem_data"]["type"] == problem.type_name
     assert parsed_data["problem_data"]["dimension"] == problem.dimension
-    # Capacity: use max capacity from depot constraints
-    expected_capacity = max(c.max_load for c in problem.depot_constraints)
-    assert parsed_data["problem_data"]["capacity"] == expected_capacity
+    assert parsed_data["problem_data"]["capacity"] == problem.depot_constraints[0].max_load
+    assert len(parsed_data["depots"]) == problem.num_depots
 
   @pytest.mark.parametrize("filename", TEST_FILES)
   @pytest.mark.requires_dataset
@@ -107,10 +107,11 @@ class TestCordeauIntegration:
     expected: ParseResult = problem.to_parse_result(file_path=cordeau_mdvrp_dir / filename)
 
     output_path: Path = temp_converted_dir / f"{filename}.lkh.vrp"
-    cordeau_converter.to_tsplib(problem=problem, output_path=output_path, as_lkh=True)
+    cordeau_converter.to_tsplib(problem=problem, output_path=output_path)
     reparsed: ParseResult = format_parser.parse_file(file_path=output_path)
 
-    # 0-based arrays must agree element by element (depots first, as the file orders them)
+    # 0-based arrays must agree element by element (customers first, then the
+    # depots in their source node order)
     assert expected["coords"] == reparsed["coords"]
     assert expected["demands"] == reparsed["demands"]
     assert expected["depots"] == reparsed["depots"]
@@ -124,7 +125,6 @@ class TestCordeauIntegration:
     assert reparsed_pd["capacity"] == expected_pd["capacity"]
     assert reparsed_pd["edge_weight_type"] == expected_pd["edge_weight_type"]
     assert reparsed_pd.get("vehicles") == expected_pd.get("vehicles")
-    assert reparsed_pd.get("num_depots") == expected_pd.get("num_depots")
     assert reparsed_pd.get("max_distance") == expected_pd.get("max_distance")
     assert reparsed_pd.get("depot_capacities") == expected_pd.get("depot_capacities")
     assert reparsed_pd.get("depot_durations") == expected_pd.get("depot_durations")
@@ -146,9 +146,9 @@ class TestCordeauIntegration:
     # Parse Cordeau file
     problem: CordeauProblem = cordeau_parser.parse_file(cordeau_mdvrp_dir / filename)
 
-    # Convert to TSPLIB95 file
+    # Convert to the TSPLIB-extended dialect
     output_path: Path = temp_converted_dir / f"{filename}.vrp"
-    cordeau_converter.to_tsplib95(problem, output_path=output_path)
+    cordeau_converter.to_tsplib(problem, output_path=output_path)
 
     # Parse with existing TSPLIB95 parser
     parsed_data: ParseResult = format_parser.parse_file(output_path)
@@ -163,7 +163,7 @@ class TestCordeauIntegration:
     assert "coords" in transformed
     assert len(transformed["coords"]) == problem.dimension
     assert transformed["problem_data"]["name"] == filename
-    assert transformed["problem_data"]["type"] == "CVRP"
+    assert transformed["problem_data"]["type"] == problem.type_name
     assert transformed["problem_data"]["dimension"] == problem.dimension
 
   @pytest.mark.requires_dataset
@@ -182,9 +182,9 @@ class TestCordeauIntegration:
     # Step 1: Parse Cordeau file
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / filename)
 
-    # Step 2: Convert to TSPLIB95 file
+    # Step 2: Convert to the TSPLIB-extended dialect
     output_path: Path = temp_converted_dir / f"{filename}.vrp"
-    cordeau_converter.to_tsplib95(problem, output_path=output_path)
+    cordeau_converter.to_tsplib(problem, output_path=output_path)
 
     # Step 3: Parse with existing TSPLIB95 parser
     parsed_data: ParseResult = format_parser.parse_file(output_path)
@@ -209,12 +209,14 @@ class TestCordeauIntegration:
     # Step 6: Verify against the v2 shape — hub (name, type) + the
     # self-contained cvrp_problems row. v2 has no `vehicles` column, so it
     # is intentionally not asserted (Cordeau's m lives only in the COMMENT).
-    row = db_manager.load(name=filename, type="CVRP")
+    row = db_manager.load(name=filename, type=problem.type_name)
     assert row["name"] == filename  # hub
-    assert row["type"] == "CVRP"  # hub
+    # Storage preserves the declared problem type (MDVRP) in the hub
+    # while routing the per-type arrays to cvrp_problems.
+    assert row["type"] == problem.type_name  # hub preserves identity ("MDVRP")
     assert row["has_solution"] is False  # hub satellite flag
     assert row["dimension"] == problem.dimension  # cvrp_problems
-    assert row["capacity"] == max(c.max_load for c in problem.depot_constraints)
+    assert row["capacity"] == problem.depot_constraints[0].max_load
     assert len(row["demands"]) == problem.dimension
     assert row["depots"] == transformed["depots"]
     assert len(row["depots"]) == problem.num_depots
@@ -234,7 +236,7 @@ class TestCordeauIntegration:
     # Parse and convert
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / filename)
     output_path: Path = temp_converted_dir / f"{filename}.vrp"
-    cordeau_converter.to_tsplib95(problem, output_path=output_path)
+    cordeau_converter.to_tsplib(problem, output_path=output_path)
 
     # Parse with existing parser
     parsed_data: ParseResult = format_parser.parse_file(file_path=output_path)
@@ -244,14 +246,14 @@ class TestCordeauIntegration:
     transformed: dict[str, Any] = transformer.transform_problem(problem_data=parsed_data)
 
     # Write JSON. JSONWriter.organize_by_type defaults to True, so the file
-    # lands under a type subdirectory: <out>/cvrp/p01.json.
+    # lands under a type subdirectory: <out>/mdvrp/p01.json.
     json_output_dir: Path = temp_converted_dir / "json"
     json_output_dir.mkdir()
     json_writer = JSONWriter(output_dir=json_output_dir, logger=logging.getLogger(__name__))
     json_writer.write_problem(data=transformed)
 
     # Verify JSON file created under the type subdirectory
-    json_file: Path = json_output_dir / "cvrp" / f"{filename}.json"
+    json_file: Path = json_output_dir / "mdvrp" / f"{filename}.json"
     assert json_file.exists()
 
     # Verify JSON content against the v2 flattened shape: metadata sits
@@ -261,6 +263,6 @@ class TestCordeauIntegration:
       json_data = json.load(fp=f)
 
     assert json_data["problem"]["name"] == filename
-    assert json_data["problem"]["type"] == "CVRP"
+    assert json_data["problem"]["type"] == problem.type_name
     assert json_data["problem"]["dimension"] == problem.dimension
-    assert json_data["problem"]["capacity"] == max(c.max_load for c in problem.depot_constraints)
+    assert json_data["problem"]["capacity"] == problem.depot_constraints[0].max_load

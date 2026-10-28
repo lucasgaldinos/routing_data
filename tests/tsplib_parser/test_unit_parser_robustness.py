@@ -26,11 +26,15 @@ EXPECTED
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tsplib_parser.exceptions import ParseError, ValidationError
 from tsplib_parser.parser import FormatParser
+
+if TYPE_CHECKING:
+  from tsplib_parser.types import ProblemData
 
 
 def _write(tmp_path: Path, name: str, content: str) -> str:
@@ -234,11 +238,16 @@ class TestRealWorldVariants:
 
     WHY: ``_preprocess_vrp_file`` stripped every extended header before the
     problem class could parse it and re-added it as a raw string, so
-    ``vehicles`` came back as ``"16"``, ``num_depots`` was never set, and a
-    stray lowercased ``depots`` key appeared in ``problem_data``. Only headers
-    the class does not register may be stripped.
+    ``vehicles`` came back as ``"16"`` and a stray lowercased ``depots`` key
+    appeared in ``problem_data``. Only headers the class does not register may
+    be stripped.
 
-    EXPECTED: ``vehicles``/``num_depots`` are ints and no ``depots`` key leaks.
+    ``DEPOTS`` is a third case: it is not a registered header at all (the depot
+    count is ``len(DEPOT_SECTION)``), so it must be dropped without leaving a
+    raw key behind.
+
+    EXPECTED: ``vehicles`` is an int, no ``depots`` or ``num_depots`` key leaks,
+    and the depot count is the length of the parsed section.
     """
     content = (
       "NAME : mini-mdvrp\nTYPE : MDVRP\nDIMENSION : 5\nEDGE_WEIGHT_TYPE : EUC_2D\n"
@@ -247,9 +256,10 @@ class TestRealWorldVariants:
       "DEMAND_SECTION\n1 0\n2 0\n3 10\n4 20\n5 30\n"
       "DEPOT_SECTION\n1\n2\n-1\nEOF\n"
     )
-    payload = FormatParser().parse_file(_write(tmp_path, "mini-mdvrp.vrp", content))["problem_data"]
+    payload: ProblemData = FormatParser().parse_file(_write(tmp_path, "mini-mdvrp.vrp", content))["problem_data"]
 
     assert payload["vehicles"] == 16
     assert isinstance(payload["vehicles"], int)
-    assert payload.get("num_depots") == 2
     assert "depots" not in payload
+    assert "num_depots" not in payload
+    assert "DEPOTS" not in payload

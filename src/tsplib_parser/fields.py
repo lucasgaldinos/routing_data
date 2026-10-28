@@ -8,7 +8,7 @@ ToursField).
 
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from . import exceptions
 from .transformers import (
@@ -205,7 +205,10 @@ class EdgeDataField(TransformerField):
     edge_fmt: str | None = getattr(problem, "edge_data_format", None) or None
     if isinstance(self.tf, EdgeDataT):
       return self.tf.parse(text, edge_data_format=edge_fmt)
-    return self.tf.parse(text)
+    # ``TransformerField`` stores ``self.tf`` as ``Transformer[Any]``, so an
+    # un-narrowed ``parse`` is ``Any``. This fallback only runs for a subclass
+    # that overrides ``build_transformer``; the field contract is still edge pairs.
+    return cast("list[list[int]]", self.tf.parse(text))
 
 
 class ToursField(Field):

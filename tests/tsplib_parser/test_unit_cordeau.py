@@ -11,7 +11,7 @@ import pytest
 from tsplib_parser.cordeau import CordeauConverter, CordeauParseError, CordeauParser
 from tsplib_parser.cordeau.cordeau_types import CordeauProblem
 from tsplib_parser.exceptions import FormatError
-from tsplib_parser.models import LKHProblem, Problem
+from tsplib_parser.models import ExtendedProblem, Problem
 
 if TYPE_CHECKING:
   from pathlib import Path
@@ -115,10 +115,10 @@ class TestCordeauParser:
   def test_cordeau_problem_is_not_a_tsplib_problem(
     self, cordeau_mdvrp_dir: Path, cordeau_parser: CordeauParser
   ) -> None:
-    """Verify CordeauProblem is a source record and to_lkh() is its conversion boundary."""
+    """Verify CordeauProblem is a source record and to_extended() is its conversion boundary."""
     assert not issubclass(CordeauProblem, Problem)
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / "p01")
-    assert isinstance(problem.to_lkh(), LKHProblem)
+    assert isinstance(problem.to_extended(), ExtendedProblem)
 
   @pytest.mark.requires_dataset
   def test_cordeau_problem_as_dict(self, cordeau_mdvrp_dir: Path, cordeau_parser: CordeauParser) -> None:
@@ -135,18 +135,18 @@ class TestCordeauParser:
     assert len(data["demands"]) == 54
 
   @pytest.mark.requires_dataset
-  def test_cordeau_problem_to_lkh(self, cordeau_mdvrp_dir: Path, cordeau_parser: CordeauParser) -> None:
-    """Verify CordeauProblem.to_lkh() creates a valid LKHProblem model."""
+  def test_cordeau_problem_to_extended(self, cordeau_mdvrp_dir: Path, cordeau_parser: CordeauParser) -> None:
+    """Verify CordeauProblem.to_extended() creates a valid ExtendedProblem model."""
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / "p01")
-    lkh: LKHProblem = problem.to_lkh()
-    assert isinstance(lkh, LKHProblem)
-    assert lkh.name == "p01"
-    assert lkh.problem_type == "MDVRP"
-    assert lkh.dimension == 54
-    assert lkh.vehicles == 16
-    assert lkh.capacity == 80
-    assert lkh.num_depots == 4
-    assert len(lkh.depots) == 4
+    extended: ExtendedProblem = problem.to_extended()
+    assert isinstance(extended, ExtendedProblem)
+    assert extended.name == "p01"
+    assert extended.problem_type == "MDVRP"
+    assert extended.dimension == 54
+    assert extended.vehicles == 16
+    assert extended.capacity == 80
+    assert extended.depots == [node.node_id for node in problem.depot_nodes]
+    assert not hasattr(extended, "num_depots")
 
 
 class TestCordeauConverter:
@@ -154,30 +154,34 @@ class TestCordeauConverter:
 
   @pytest.mark.parametrize(argnames="filename", argvalues=TEST_FILES)
   @pytest.mark.requires_dataset
-  def test_convert_to_tsplib95(
+  def test_convert_to_extended_tsplib(
     self,
     cordeau_mdvrp_dir: Path,
     cordeau_parser: CordeauParser,
     cordeau_converter: CordeauConverter,
     filename: str,
   ) -> None:
-    """Test conversion to TSPLIB95 format."""
-    # Parse Cordeau file
+    """Verify the emitted document keeps the real type and every depot."""
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / filename)
 
-    # Convert to TSPLIB95
-    tsplib_content: str = cordeau_converter.to_tsplib95(problem)
+    tsplib_content: str = cordeau_converter.to_tsplib(problem)
 
-    # Basic validation
-    assert tsplib_content is not None
+    # The instance's real type, never a single-depot CVRP surrogate.
+    assert f"TYPE : {problem.type_name}" in tsplib_content
+    assert "TYPE : CVRP" not in tsplib_content
+
+    # Every depot survives, and the depot count is the section length.
+    assert "DEPOT_SECTION" in tsplib_content
+    depot_block: str = tsplib_content.split("DEPOT_SECTION", 1)[1].split("-1", 1)[0]
+    depot_ids: list[str] = depot_block.split()
+    assert len(depot_ids) == problem.num_depots
+    assert depot_ids == [str(node.node_id) for node in problem.depot_nodes]
+
     assert "NAME" in tsplib_content
-    assert "TYPE" in tsplib_content
     assert "DIMENSION" in tsplib_content
     assert "EDGE_WEIGHT_TYPE" in tsplib_content
-    assert "CAPACITY" in tsplib_content
     assert "NODE_COORD_SECTION" in tsplib_content
     assert "DEMAND_SECTION" in tsplib_content
-    assert "DEPOT_SECTION" in tsplib_content
     assert "EOF" in tsplib_content
 
   @pytest.mark.parametrize(argnames="filename", argvalues=TEST_FILES)
@@ -196,7 +200,7 @@ class TestCordeauConverter:
 
     # Convert with output file
     output_path = temp_converted_dir / f"{filename}.vrp"
-    tsplib_content: str = cordeau_converter.to_tsplib95(problem, output_path=output_path)
+    tsplib_content: str = cordeau_converter.to_tsplib(problem, output_path=output_path)
 
     # Check file was created
     assert output_path.exists()
@@ -214,7 +218,7 @@ class TestCordeauConverter:
   ) -> None:
     """Test p01 specific conversion details."""
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / "p01")
-    tsplib_content: str = cordeau_converter.to_tsplib95(problem)
+    tsplib_content: str = cordeau_converter.to_tsplib(problem)
 
     # Check dimension (customers + depots)
     assert f"DIMENSION : {problem.dimension}" in tsplib_content
@@ -242,33 +246,33 @@ class TestCordeauConverter:
 
     # Last entry should be -1
     assert depot_entries[-1] == -1
-    # Number of actual depot IDs should match num_depots
-    assert len(depot_entries) - 1 == problem.num_depots
+    # The listed ids are the depots' own node numbers, not a renumbering
+    assert depot_entries[:-1] == [node.node_id for node in problem.depot_nodes]
 
   @pytest.mark.requires_dataset
-  def test_convert_to_tsplib_lkh_lossless(
+  def test_convert_to_tsplib_extended_lossless(
     self,
     cordeau_mdvrp_dir: Path,
     cordeau_parser: CordeauParser,
     cordeau_converter: CordeauConverter,
   ) -> None:
-    """Test lossless conversion to LKH-3 extended format."""
+    """Test lossless conversion to the TSPLIB-extended format."""
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=cordeau_mdvrp_dir / "p01")
-    lkh_content: str = cordeau_converter.to_tsplib(problem=problem, as_lkh=True)
+    content: str = cordeau_converter.to_tsplib(problem=problem)
 
-    assert "TYPE : MDVRP" in lkh_content
-    assert "VEHICLES : 16" in lkh_content
-    assert "DEPOTS : 4" in lkh_content
-    assert "CAPACITY : 80" in lkh_content
+    assert "TYPE : MDVRP" in content
+    assert "VEHICLES : 16" in content
+    assert "CAPACITY : 80" in content
+    # The depot count is derived from DEPOT_SECTION, so no DEPOTS header.
+    assert "DEPOTS :" not in content
 
-    # Verify LKHProblem parses it back losslessly
-    parsed: LKHProblem = LKHProblem.parse(text=lkh_content)
+    # Verify ExtendedProblem parses it back losslessly
+    parsed: ExtendedProblem = ExtendedProblem.parse(text=content)
     assert parsed.name == "p01"
     assert parsed.problem_type == "MDVRP"
     assert parsed.vehicles == 16
-    assert parsed.num_depots == 4
     assert parsed.capacity == 80
-    assert len(parsed.depots) == 4
+    assert parsed.depots == [node.node_id for node in problem.depot_nodes]
 
   def test_convert_heterogeneous_depot_sections(
     self,
@@ -292,12 +296,58 @@ class TestCordeauConverter:
     raw_file.write_text(content)
 
     problem: CordeauProblem = cordeau_parser.parse_file(file_path=raw_file)
-    lkh_content: str = cordeau_converter.to_tsplib(problem=problem, as_lkh=True)
+    content: str = cordeau_converter.to_tsplib(problem=problem)
 
-    assert "DEPOT_CAPACITY_SECTION" in lkh_content
-    assert "DEPOT_DURATION_SECTION" in lkh_content
+    assert "DEPOT_CAPACITY_SECTION" in content
+    assert "DEPOT_DURATION_SECTION" in content
 
-    parsed: LKHProblem = LKHProblem.parse(text=lkh_content)
+    parsed: ExtendedProblem = ExtendedProblem.parse(text=content)
     assert parsed.problem_type == "MDVRP"
     assert parsed.depot_capacities == {1: 120, 2: 200}
     assert parsed.depot_durations == {1: 100.0, 2: 150.0}
+
+
+def test_mdvrptw_round_trip_keeps_source_node_ids(
+  tmp_path: Path,
+  cordeau_parser: CordeauParser,
+  cordeau_converter: CordeauConverter,
+) -> None:
+  """A type-6 instance converts to a document this parser reads back unchanged.
+
+  Regression for two defects: ``MDVRPTW`` was absent from
+  ``EXTENDED_PROBLEM_TYPES``, so the converter's own output raised
+  ``ValidationError: Unknown problem type: MDVRPTW``; and
+  ``TIME_WINDOW_SECTION``/``SERVICE_TIME_SECTION`` renumbered nodes 1..dimension
+  with the depots first, while ``NODE_COORD_SECTION``/``DEMAND_SECTION`` kept the
+  source ids (customers 1..n, depots n+1..n+t), so every customer window slid one
+  node further back for each depot in the instance.
+  """
+  content = (
+    "6 2 4 2\n"
+    "100 120\n"
+    "150 200\n"
+    "1 10.0 20.0 5.0 10 1 1 1 0.0 50.0\n"
+    "2 30.0 40.0 5.0 15 1 1 1 0.0 60.0\n"
+    "3 50.0 60.0 5.0 20 1 1 1 0.0 70.0\n"
+    "4 70.0 80.0 5.0 25 1 1 1 0.0 80.0\n"
+    "5 0.0 0.0 0.0 0 0 0\n"
+    "6 100.0 100.0 0.0 0 0 0\n"
+  )
+  raw_file: Path = tmp_path / "mdvrptw.txt"
+  raw_file.write_text(content)
+
+  problem: CordeauProblem = cordeau_parser.parse_file(file_path=raw_file)
+  converted: str = cordeau_converter.to_tsplib(problem=problem)
+  parsed: ExtendedProblem = ExtendedProblem.parse(text=converted)
+
+  assert parsed.problem_type == "MDVRPTW"
+  assert parsed.depots == [5, 6]
+  # Each customer window must stay on its own source node id; the pre-fix output
+  # put customer 1's window on node 3.
+  assert parsed.time_windows[1] == [0.0, 50.0]
+  assert parsed.time_windows[2] == [0.0, 60.0]
+  assert parsed.time_windows[3] == [0.0, 70.0]
+  assert parsed.time_windows[4] == [0.0, 80.0]
+  # Depots carry no window in the source, so none is invented for them.
+  assert 5 not in parsed.time_windows
+  assert 6 not in parsed.time_windows

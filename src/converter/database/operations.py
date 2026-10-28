@@ -7,6 +7,8 @@ from typing import Any, ClassVar
 
 import duckdb
 
+from tsplib_parser.types import STORABLE_PROBLEM_TYPES, normalize_problem_type
+
 from ..utils.exceptions import DatabaseError, NotFoundError
 
 # SQL templates whose only dynamic piece is a fixed internal type-table or
@@ -94,15 +96,17 @@ class DatabaseManager:
         # solutions_seq dropped with the solutions table, 2026-09-07).
         conn.execute(query="CREATE SEQUENCE IF NOT EXISTS problems_seq START 1")
         conn.execute(query="CREATE SEQUENCE IF NOT EXISTS file_tracking_seq START 1")
+        conn.execute(query="CREATE SEQUENCE IF NOT EXISTS solutions_seq START 1")
 
         # Hub: discovery index only. "Which table holds att48?" lives here.
+        allowed_types_sql: str = ", ".join(f"'{t}'" for t in sorted(STORABLE_PROBLEM_TYPES))
         conn.execute(
-          query="""
+          query=f"""
                     CREATE TABLE IF NOT EXISTS problems (
                         id INTEGER PRIMARY KEY DEFAULT nextval('problems_seq'),
                         name VARCHAR NOT NULL,
                         type VARCHAR NOT NULL
-                            CHECK (type IN ('TSP', 'ATSP', 'CVRP', 'HCP', 'SOP')),
+                            CHECK (type IN ({allowed_types_sql})),
                         has_solution BOOLEAN NOT NULL DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -206,11 +210,48 @@ class DatabaseManager:
                 """
         )
 
+        # Solutions satellite (Option A, 2026-10-23): one row per solution file,
+        # linked to its instance when the instance is known and NULL otherwise
+        # (orphan). ``routes`` is the single representation for both formats — a
+        # ``*.opt.tour`` cycle is a list of one route, a CVRPLIB ``*.sol`` holds
+        # several — with 0-based node indices and the depot excluded (measured:
+        # 472/472 files are 1-based, never list the depot, and the return edge is
+        # implicit). ``kind`` is the source format; ``quality`` is the claim the
+        # source makes (VRP-REP marks proven optimal values with '*', TSPLIB ships
+        # ``*.opt.tour`` as optimal tours, CVRPLIB ``*.sol`` as best known).
+        # ``source_file`` is unique because one file describes one solution — when
+        # a stem matches several instances the link is undecidable and the row
+        # stays an orphan (CV10).
+        conn.execute(
+          query="""
+                    CREATE TABLE IF NOT EXISTS solutions (
+                        id INTEGER PRIMARY KEY DEFAULT nextval('solutions_seq'),
+                        problem_id INTEGER REFERENCES problems(id),
+                        kind VARCHAR NOT NULL
+                            CHECK (kind IN ('OPT_TOUR', 'SOL')),
+                        quality VARCHAR NOT NULL
+                            CHECK (quality IN ('proven_optimal', 'best_known', 'unknown')),
+                        source_file VARCHAR NOT NULL UNIQUE,
+                        checksum VARCHAR,
+                        cost DOUBLE,
+                        routes INTEGER[][] NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """
+        )
+
         # Indexes for query performance
         conn.execute(
           query="""
                     CREATE INDEX IF NOT EXISTS idx_problems_type
                     ON problems(type)
+                """
+        )
+
+        conn.execute(
+          query="""
+                    CREATE INDEX IF NOT EXISTS idx_solutions_problem
+                    ON solutions(problem_id)
                 """
         )
 
@@ -260,37 +301,113 @@ class DatabaseManager:
     "SOP": "sop_problems",
   }
 
+  # Mapping from every storable problem type to its physical storage table type
+  _TYPE_TO_STORAGE: ClassVar[dict[str, str]] = {
+    # ATSP
+    "ATSP": "ATSP",
+    # HCP / HPP
+    "HCP": "HCP",
+    "HPP": "HCP",
+    # SOP
+    "SOP": "SOP",
+    # CVRP family (vehicles, capacity, demands, depots)
+    "CVRP": "CVRP",
+    "VRP": "CVRP",
+    "ACVRP": "CVRP",
+    "ADCVRP": "CVRP",
+    "CCVRP": "CVRP",
+    "CLUVRP": "CVRP",
+    "CVRPTW": "CVRP",
+    "DCVRP": "CVRP",
+    "MDVRP": "CVRP",
+    "MDVRPTW": "CVRP",
+    "OVRP": "CVRP",
+    "PDPTW": "CVRP",
+    "RCTVRP": "CVRP",
+    "RCTVRPTW": "CVRP",
+    "SOFTCLUVRP": "CVRP",
+    "VRPB": "CVRP",
+    "VRPBTW": "CVRP",
+    "VRPMPD": "CVRP",
+    "VRPMPDTW": "CVRP",
+    "VRPSPD": "CVRP",
+    "VRPSPDTW": "CVRP",
+    # TSP family (single agent, coordinates or matrix, no demands)
+    "TSP": "TSP",
+    "1-PDTSP": "TSP",
+    "BMTSP": "TSP",
+    "BWTSP": "TSP",
+    "CATSPP": "TSP",
+    "K-TSP": "TSP",
+    "M-PDTSP": "TSP",
+    "M1-PDTSP": "TSP",
+    "MDMTSP": "TSP",
+    "MLP": "TSP",
+    "MTRP": "TSP",
+    "MTRPD": "TSP",
+    "MTSP": "TSP",
+    "O-K-TSP": "TSP",
+    "OP": "TSP",
+    "PC-TSP": "TSP",
+    "PDTSP": "TSP",
+    "PDTSPF": "TSP",
+    "PDTSPL": "TSP",
+    "PTP": "TSP",
+    "PTSP": "TSP",
+    "STTSP": "TSP",
+    "TOP": "TSP",
+    "TRP": "TSP",
+    "TSPDL": "TSP",
+    "TSPPD": "TSP",
+    "TSPTW": "TSP",
+    "TSP_MD": "TSP",
+  }
+
   def _resolve_type_table(self, problem_type: Any) -> str:
     """Return the schema-v2 type table name for a problem type.
 
-    Normalizes the type exactly like the write path (``_normalize_type_for_schema``,
-    VRP-family variants -> ``cvrp_problems``) so reads resolve the same table a
-    write would have stored.
+    Resolves the storage type (e.g. MDVRP -> cvrp_problems) so reads
+    resolve the same table a write stored into.
     """
-    return self._TYPE_TABLES[self._normalize_type_for_schema(problem_type=problem_type)]
+    return self._TYPE_TABLES[self._resolve_storage_type(problem_type=problem_type)]
 
-  @staticmethod
-  def _normalize_type_for_schema(problem_type: Any) -> str:
-    """Map a parser problem type onto the five schema v2 types.
+  @classmethod
+  def _validate_hub_type(cls, problem_type: Any) -> str:
+    """Validate and normalize a problem type for the hub table.
 
-    VRP-family variants (VRP, MC-VRP, TW-VRP, PD-VRP, ...) all land in
-    ``cvrp_problems``; the schema CHECK only admits the five canonical types.
-    Raises ``DatabaseError`` for anything else.
+    Accepts any type in :data:`STORABLE_PROBLEM_TYPES` (all extended problem
+    types except ``TOUR``). Canonicalizes aliases (e.g. ``VRP`` -> ``CVRP``).
+    Raises ``DatabaseError`` for invalid or unsupported types.
     """
     if not isinstance(problem_type, str):
       raise DatabaseError(message=f"Invalid problem type {problem_type!r}", operation="insert_problem")
-    t: str = problem_type.strip().upper()
-    if t in ("TSP", "ATSP", "CVRP", "HCP", "SOP"):
-      return t
-    if "VRP" in t:
-      return "CVRP"
-    raise DatabaseError(message=f"Unsupported problem type {problem_type!r}", operation="insert_problem")
+    normalized: str | None = normalize_problem_type(problem_type)
+    if not normalized or normalized not in STORABLE_PROBLEM_TYPES:
+      raise DatabaseError(message=f"Unsupported problem type {problem_type!r}", operation="insert_problem")
+    return normalized
 
-  def _insert_hub(self, conn: Any, data: dict[str, Any]) -> int:
+  @classmethod
+  def _resolve_storage_type(cls, problem_type: Any) -> str:
+    """Map a problem type onto one of the five physical type tables.
+
+    Validates against :data:`STORABLE_PROBLEM_TYPES` first, then dispatches to
+    ``'TSP'``, ``'ATSP'``, ``'CVRP'``, ``'HCP'``, or ``'SOP'``.
+    """
+    hub_type: str = cls._validate_hub_type(problem_type)
+    return cls._TYPE_TO_STORAGE[hub_type]
+
+  @classmethod
+  def _normalize_type_for_schema(cls, problem_type: Any) -> str:
+    """Deprecated alias for :meth:`_resolve_storage_type`."""
+    return cls._resolve_storage_type(problem_type=problem_type)
+
+  def _insert_hub(self, conn: Any, data: dict[str, Any], hub_type: str | None = None) -> int:
     """Insert the hub row and return its generated id."""
+    if hub_type is None:
+      hub_type = self._validate_hub_type(problem_type=data.get("type"))
     result = conn.execute(
       "INSERT INTO problems (name, type) VALUES (?, ?) RETURNING id",
-      [data.get("name"), self._normalize_type_for_schema(problem_type=data.get("type"))],
+      [data.get("name"), hub_type],
     ).fetchone()
     if not result:
       raise DatabaseError(message="Failed to insert hub row", operation="insert_problem")
@@ -417,12 +534,13 @@ class DatabaseManager:
     Returns:
         The generated hub ``problems.id``.
     """
-    ptype: str = self._normalize_type_for_schema(problem_type=problem_data.get("type"))
-    inserter = getattr(self, self._TYPE_INSERTERS[ptype])
+    hub_type: str = self._validate_hub_type(problem_type=problem_data.get("type"))
+    storage_type: str = self._resolve_storage_type(problem_type=hub_type)
+    inserter = getattr(self, self._TYPE_INSERTERS[storage_type])
     with duckdb.connect(database=str(self.db_path)) as conn:
       conn.execute(query="BEGIN TRANSACTION")
       try:
-        problem_id: int = self._insert_hub(conn, data=problem_data)
+        problem_id: int = self._insert_hub(conn, data=problem_data, hub_type=hub_type)
         inserter(conn, problem_id, problem_data)
         self._insert_batch_satellites(conn, problem_id, payload=problem_data)
         conn.execute(query="COMMIT")
@@ -502,9 +620,10 @@ class DatabaseManager:
       conn.execute(query="BEGIN TRANSACTION")
       try:
         for payload in collected:
-          problem_id: int = self._insert_hub(conn, data=payload)
-          ptype: str = self._normalize_type_for_schema(problem_type=payload.get("type"))
-          getattr(self, self._TYPE_INSERTERS[ptype])(conn, problem_id, payload)
+          hub_type: str = self._validate_hub_type(problem_type=payload.get("type"))
+          problem_id: int = self._insert_hub(conn, data=payload, hub_type=hub_type)
+          storage_type: str = self._resolve_storage_type(problem_type=hub_type)
+          getattr(self, self._TYPE_INSERTERS[storage_type])(conn, problem_id, payload)
           self._insert_batch_satellites(conn, problem_id, payload)
         conn.execute(query="COMMIT")
         successful = [payload["name"] for payload in collected]
@@ -624,7 +743,7 @@ class DatabaseManager:
 
     Args:
         name: Problem name
-        type: Problem type (e.g. 'TSP', 'CVRP')
+        type: Problem type (e.g. 'TSP', 'CVRP', 'MDVRP')
 
     Returns:
         dictionary of the full type-table row joined to the hub row
@@ -634,12 +753,12 @@ class DatabaseManager:
     Raises:
         NotFoundError: If no row matches (name, type).
     """
-    normalized_type: str = self._normalize_type_for_schema(problem_type=type)
-    table: str = self._TYPE_TABLES[normalized_type]
+    hub_type: str = self._validate_hub_type(problem_type=type)
+    table: str = self._TYPE_TABLES[self._resolve_storage_type(problem_type=hub_type)]
     with duckdb.connect(database=str(object=self.db_path)) as conn:
       row: tuple[Any, ...] | None = conn.execute(
         query=_LOAD_JOIN_TEMPLATE.replace("{table}", table),
-        parameters=[name, normalized_type],
+        parameters=[name, hub_type],
       ).fetchone()
       if not row:
         raise NotFoundError(message=f"Problem '{name}' of type '{type}' not found", name=name, type=type)
@@ -654,7 +773,7 @@ class DatabaseManager:
 
     Args:
         name: Problem name
-        type: Problem type (e.g. 'TSP', 'CVRP')
+        type: Problem type (e.g. 'TSP', 'CVRP', 'MDVRP')
 
     Returns:
         Nested list (n x n) of integer edge weights.
@@ -662,6 +781,7 @@ class DatabaseManager:
     Raises:
         NotFoundError: If the problem or its edge-weight matrix is missing.
     """
+    hub_type: str = self._validate_hub_type(problem_type=type)
     with duckdb.connect(database=str(self.db_path)) as conn:
       row: tuple[Any, ...] | None = conn.execute(
         query="""
@@ -670,7 +790,7 @@ class DatabaseManager:
                 JOIN problems p ON p.id = e.problem_id
                 WHERE p.name = ? AND p.type = ?
             """,
-        parameters=[name, type],
+        parameters=[name, hub_type],
       ).fetchone()
       if not row or row[0] is None:
         raise NotFoundError(
@@ -842,7 +962,7 @@ class DatabaseManager:
 
     if problem_type:
       query += " AND q.type = ?"
-      params.append(self._normalize_type_for_schema(problem_type=problem_type))
+      params.append(self._validate_hub_type(problem_type=problem_type))
 
     if min_dimension is not None:
       query += " AND q.dimension >= ?"

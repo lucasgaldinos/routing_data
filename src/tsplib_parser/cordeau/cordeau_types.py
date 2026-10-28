@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-  from ..models import LKHProblem
+  from ..models import ExtendedProblem
   from ..types import Metadata, ParseResult, ProblemData
 
 
@@ -79,7 +79,7 @@ class CordeauProblem:
   Cordeau files are positional (``type m n t``), not keyword-driven TSPLIB, so this
   class intentionally does not implement :class:`tsplib_parser.models.Problem`: it has
   no ``Field`` descriptors, no ``parse()``, and no ``Problem(**kwargs)`` constructor.
-  :meth:`to_lkh` is the conversion boundary that yields a TSPLIB-side ``LKHProblem``.
+  :meth:`to_extended` is the conversion boundary that yields a TSPLIB-side ``ExtendedProblem``.
 
   Section values are 1-based (``node_id`` is the file's node number). The 0-based
   payload contract lives in :class:`tsplib_parser.types.ParseResult`.
@@ -209,9 +209,9 @@ class CordeauProblem:
     """Convert this problem to the 0-based ``ParseResult`` payload contract.
 
     Node order matches the TSPLIB file that :meth:`CordeauConverter.to_tsplib`
-    writes: depots first (indices ``0..num_depots - 1``), customers after. The
-    arrays are 0-based, unlike :meth:`as_dict`, which keeps the source file's
-    1-based Cordeau order.
+    writes *and* the source file: customers first (nodes ``1..n``), depots after
+    (nodes ``n+1..n+t``), so node id equals index ``+1``. The arrays are 0-based,
+    unlike :meth:`as_dict`, which keeps the 1-based ids.
 
     Parameters
     ----------
@@ -225,7 +225,7 @@ class CordeauProblem:
         Payload with ``coords``, ``demands``, ``depots``, ``problem_data`` and
         ``metadata`` filled; graph and tour fields are empty.
     """
-    nodes: list[CordeauNode] = [*self.depot_nodes, *self.customer_nodes]
+    nodes: list[CordeauNode] = [*self.customer_nodes, *self.depot_nodes]
     capacities: set[int] = {constraint.max_load for constraint in self.depot_constraints}
     durations: set[float] = {constraint.max_duration for constraint in self.depot_constraints}
 
@@ -241,10 +241,9 @@ class CordeauProblem:
       "display_data_type": None,
       "edge_data_format": None,
       "vehicles": self.num_vehicles * self.num_depots,
-      "num_depots": self.num_depots,
     }
 
-    # Mirror the sections ``CordeauConverter.to_tsplib(as_lkh=True)`` emits.
+    # Mirror the sections ``CordeauConverter.to_tsplib()`` emits.
     if len(capacities) > 1:
       problem_data["depot_capacities"] = [constraint.max_load for constraint in self.depot_constraints]
     if len(durations) > 1:
@@ -286,36 +285,35 @@ class CordeauProblem:
       "coords": [[node.x, node.y] for node in nodes],
       "display_coords": [],
       "demands": [node.demand for node in nodes],
-      "depots": list(range(self.num_depots)),
+      "depots": list(range(self.num_customers, self.num_customers + self.num_depots)),
       "edges": [],
       "fixed_edges": [],
       "tours": [],
       "metadata": metadata,
     }
 
-  def to_lkh(self) -> "LKHProblem":
-    """Convert this CordeauProblem to an in-memory LKHProblem model."""
-    from ..models import LKHProblem
+  def to_extended(self) -> "ExtendedProblem":
+    """Convert this CordeauProblem to an in-memory ExtendedProblem model."""
+    from ..models import ExtendedProblem
 
-    lkh = LKHProblem()
-    lkh.name = self.name
-    lkh.problem_type = self.type_name
-    lkh.dimension = self.dimension
-    lkh.edge_weight_type = "EUC_2D"
-    lkh.vehicles = self.num_vehicles * self.num_depots
-    lkh.num_depots = self.num_depots
+    extended = ExtendedProblem()
+    extended.name = self.name
+    extended.problem_type = self.type_name
+    extended.dimension = self.dimension
+    extended.edge_weight_type = "EUC_2D"
+    extended.vehicles = self.num_vehicles * self.num_depots
 
     capacities: set[int] = {c.max_load for c in self.depot_constraints}
     if len(capacities) == 1:
-      lkh.capacity = self.depot_constraints[0].max_load
+      extended.capacity = self.depot_constraints[0].max_load
 
     durations: set[float] = {c.max_duration for c in self.depot_constraints}
     if len(durations) == 1 and self.depot_constraints[0].max_duration > 0:
-      lkh.max_distance = self.depot_constraints[0].max_duration
+      extended.max_distance = self.depot_constraints[0].max_duration
 
-    lkh.node_coords = {n.node_id: (n.x, n.y) for n in self.nodes}
-    lkh.demands = {n.node_id: n.demand for n in self.nodes}
-    lkh.depots = [n.node_id for n in self.depot_nodes]
+    extended.node_coords = {n.node_id: (n.x, n.y) for n in self.nodes}
+    extended.demands = {n.node_id: n.demand for n in self.nodes}
+    extended.depots = [n.node_id for n in self.depot_nodes]
 
     time_windows: dict[int, tuple[float, float]] = {
       n.node_id: (n.earliest_time, n.latest_time)
@@ -323,7 +321,7 @@ class CordeauProblem:
       if n.earliest_time is not None and n.latest_time is not None
     }
     if time_windows:
-      lkh.time_windows = time_windows
-      lkh.service_times = {n.node_id: (n.service_duration,) for n in self.nodes}
+      extended.time_windows = time_windows
+      extended.service_times = {n.node_id: (n.service_duration,) for n in self.nodes}
 
-    return lkh
+    return extended

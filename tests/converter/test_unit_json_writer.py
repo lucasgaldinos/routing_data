@@ -87,6 +87,22 @@ class TestJSONWriterBasic:
     assert expected_path.exists(), "File should exist"
 
   @pytest.mark.requires_dataset
+  def test_write_problem_prevents_path_traversal(self, tmp_path: Path, sample_data: dict[str, Any]) -> None:
+    """WHAT: Test that write_problem prevents path traversal via problem name (regression for M2).
+
+    WHY: Unsanitized names like '../../escaped' could escape output_dir.
+    EXPECTED: File remains safely contained within output directory.
+    """
+    writer = JSONWriter(output_dir=str(tmp_path))
+    malicious_data = dict(sample_data)
+    malicious_data["problem_data"] = dict(sample_data["problem_data"])
+    malicious_data["problem_data"]["name"] = "../../traversal_attack"
+
+    written_path = Path(writer.write_problem(malicious_data, organize_by_type=True))
+    assert written_path.resolve().is_relative_to(tmp_path.resolve())
+    assert written_path.name == "traversal_attack.json"
+
+  @pytest.mark.requires_dataset
   def test_write_problem_creates_type_subdirectory(self, tmp_path: Path, sample_data: dict[str, Any]) -> None:
     """
     WHAT: Test that write_problem creates type subdirectory
@@ -138,6 +154,7 @@ class TestJSONWriterContent:
       "fixed_edges",
       "metadata",
       "tours",
+      "edge_weight_matrix",
     }
     assert set(json_data) == expected_keys
     assert json_data["problem"]["name"] == "gr17"

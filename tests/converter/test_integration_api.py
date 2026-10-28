@@ -240,6 +240,7 @@ class TestSimpleConverterJSONConversion:
       "depots",
       "edges",
       "fixed_edges",
+      "edge_weight_matrix",
     }
     assert set(json_format.keys()) == required_keys
     assert "nodes" not in json_format, "no v1 'nodes' list in v2 json output"
@@ -313,6 +314,20 @@ class TestSimpleConverterJSONConversion:
     # Verify directory and file created
     assert output_path.parent.exists(), "Parent directory should be created"
     assert output_path.exists(), "JSON file should be created"
+
+  @pytest.mark.requires_dataset
+  def test_to_json_bare_filename_without_dir(
+    self, converter: SimpleConverter, sample_data: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+  ) -> None:
+    """WHAT: Test that to_json() works with a bare filename in cwd (regression for M10).
+
+    WHY: os.path.dirname('file.json') returns '', which caused os.makedirs('', exist_ok=True)
+    to raise FileNotFoundError.
+    EXPECTED: Writes file directly in current working directory without crashing.
+    """
+    monkeypatch.chdir(tmp_path)
+    converter.to_json(sample_data, "bare_output.json")
+    assert (tmp_path / "bare_output.json").exists()
 
 
 class TestSimpleConverterIntegration:

@@ -40,19 +40,24 @@ _STRIPPED_SECTIONS: dict[str, str] = {
   "DUE_DATE_SECTION": "",
 }
 
-#: Extended VRP/LKH-3 header lines (``"VEHICLES : 16"``). ``_preprocess_vrp_file``
+#: Extended VRP header lines (``"VEHICLES : 16"``). ``_preprocess_vrp_file``
 #: strips them only when the target problem class does not register the keyword,
 #: mirroring the ``*_SECTION`` handling in ``_STRIPPED_SECTIONS``. Stripping a
 #: registered header would downgrade the typed field to a raw string
-#: (``vehicles`` becoming ``"16"``) and drop the model's own key (``num_depots``).
+#: (``vehicles`` becoming ``"16"``).
 _VRP_HEADER_FIELDS: tuple[str, ...] = (
   "SERVICE_TIME",
   "TIME_WINDOW",
   "PICKUP_DELIVERY",
   "VEHICLES",
-  "DEPOTS",
   "PERIODS",
 )
+
+#: Headers that are **stripped and discarded** because their value is derived from
+#: another section. ``DEPOTS`` is ``len(DEPOT_SECTION)``; keeping it would create a
+#: second source of truth, and recording it as a raw key used to collide with the
+#: ``depots`` array of the payload (a lowercase ``depots='4'`` string, PB15).
+_DERIVED_HEADER_FIELDS: tuple[str, ...] = ("DEPOTS",)
 
 
 def _extract_header_type(content: str) -> str | None:
@@ -72,7 +77,7 @@ class FormatParser:
   """TSPLIB95 file parser with complete extraction, normalization, and validation.
 
   Parses TSPLIB95-format routing problems (TSP, CVRP, ATSP, HCP, SOP, TOUR)
-  and extended subclasses (such as :class:`LKHProblem`), extracting structured
+  and extended subclasses (such as :class:`ExtendedProblem`), extracting structured
   schema-v2 array columns with 0-based indices and two-stage validation
   (pre-extraction 1-based spec checks and post-extraction 0-based contract checks).
   """
@@ -312,6 +317,9 @@ class FormatParser:
         distance_value: str = line.split(":", 1)[1].strip()
         additional_fields["max_distance"] = float(distance_value)
 
+      elif any(line.startswith(f"{field} :") for field in _DERIVED_HEADER_FIELDS):
+        pass
+
       elif any(line.startswith(f"{field} :") for field in unregistered_headers):
         field_name: str = line.split(":")[0].strip().lower()
         field_value: str = line.split(":", 1)[1].strip()
@@ -344,7 +352,7 @@ class FormatParser:
     """Extract problem header metadata, extended subclass sections, and explicit weight matrix.
 
     Iterates dynamically over fields declared on ``problem``'s class so
-    ``StandardProblem`` subclasses (such as :class:`LKHProblem`) automatically
+    ``StandardProblem`` subclasses (such as :class:`ExtendedProblem`) automatically
     surface their header and extended section fields without modifying
     ``FormatParser``. Preserves normalized TSPLIB ``type`` (never overwriting
     it with ``MC-VRP``/``TW-VRP`` compound strings).
@@ -382,7 +390,7 @@ class FormatParser:
 
     core_section_names: frozenset[str] = frozenset(StandardProblem.fields_by_name.keys())
 
-    # Dynamically include additional header and extended section fields from subclasses (e.g. LKHProblem)
+    # Dynamically include additional header and extended section fields from subclasses (e.g. ExtendedProblem)
     for field_name, field_obj in problem.__class__.fields_by_name.items():
       if field_name == "problem_type" or field_name in result or field_name in extras or field_name not in data:
         continue

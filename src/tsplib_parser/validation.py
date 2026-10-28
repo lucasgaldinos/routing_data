@@ -196,7 +196,7 @@ def validate_problem_data(
 
   Consults ``problem_class`` for allowed problem ``TYPE`` values and declared
   section field dimensions (``R1``/``R2``), so subclasses such as
-  :class:`LKHProblem` automatically validate their extended types and sections.
+  :class:`ExtendedProblem` automatically validate their extended types and sections.
 
   Parameters
   ----------

@@ -49,7 +49,7 @@ Version & Metadata
 from .exceptions import FormatError, ParseError, ValidationError
 from .models import (
   PROBLEM_REGISTRY,
-  LKHProblem,
+  ExtendedProblem,
   StandardProblem,
   get_problem_class_for_type,
   register_problem_class,
@@ -68,9 +68,9 @@ __author__ = "TCC Routing Data Project"
 
 __all__: list[str] = [
   "PROBLEM_REGISTRY",
+  "ExtendedProblem",
   "FormatError",
   "FormatParser",
-  "LKHProblem",
   "ParseError",
   "StandardProblem",
   "ValidationError",

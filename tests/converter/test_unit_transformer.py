@@ -192,7 +192,7 @@ class TestDataTransformerJSONFormat:
     assert json_format["problem"] == transformed_data["problem_data"]
     assert json_format["tours"] == transformed_data["tours"]
     assert json_format["metadata"] == transformed_data["metadata"]
-    for key in ("coords", "display_coords", "demands", "depots", "edges", "fixed_edges"):
+    for key in ("coords", "display_coords", "demands", "depots", "edges", "fixed_edges", "edge_weight_matrix"):
       assert json_format[key] == transformed_data[key]
 
   def test_to_json_format_returns_expected_keys(
@@ -203,7 +203,8 @@ class TestDataTransformerJSONFormat:
     """
     WHAT: Test that to_json_format returns the v2 key set
     WHY: JSON format has a specific v2 key structure: problem (renamed from
-        problem_data), tours, metadata plus the forwarded array-column keys.
+        problem_data), tours, metadata plus the forwarded array-column keys
+        and edge_weight_matrix for explicit instances.
     EXPECTED: Returns dict with the exact v2 key set, no ``nodes`` key
     DATA: gr17.tsp
     """
@@ -219,6 +220,7 @@ class TestDataTransformerJSONFormat:
       "depots",
       "edges",
       "fixed_edges",
+      "edge_weight_matrix",
     }
     assert set(json_format.keys()) == expected_keys
     assert "nodes" not in json_format

@@ -1,7 +1,7 @@
 """
 Core TSPLIB95 parsing models and field system.
 
-This module contains the domain models (Problem, StandardProblem, LKHProblem)
+This module contains the domain models (Problem, StandardProblem, ExtendedProblem)
 and problem registry for TSPLIB95 and LKH-3 routing problems.
 """
 
@@ -25,7 +25,7 @@ from .fields import (
   ToursField,
 )
 from .tokenization import _split_tsplib_text
-from .types import LKH_PROBLEM_TYPES, NO_DIAG_FORMAT_FALLBACK, VALID_PROBLEM_TYPES
+from .types import EXTENDED_PROBLEM_TYPES, NO_DIAG_FORMAT_FALLBACK, VALID_PROBLEM_TYPES, normalize_problem_type
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -233,36 +233,55 @@ class StandardProblem(Problem):
     return MatrixClass(weights, dimension, min_index=0)
 
 
-class LKHProblem(StandardProblem):
-  """Extended LKH-3 routing problem model (proto implementation, P6 / R6).
+class ExtendedProblem(StandardProblem):
+  """TSPLIB-extended routing problem model (proto implementation, P6 / R6).
 
-  Inherits all core TSPLIB95 fields and parsing behavior from
+  Inherits the core TSPLIB95 fields and parsing behavior from
   :class:`StandardProblem` and extends :attr:`allowed_problem_types` to the
-  LKH-3 vocabulary (``CVRPTW``, ``TSPTW``, ``PDPTW``, ``MDVRP``, ``VRPB``,
-  ``MTSP``, etc.) while registering LKH-3 header and section descriptors via
+  extended vocabulary (``CVRPTW``, ``TSPTW``, ``PDPTW``, ``MDVRP``, ``VRPB``,
+  ``MTSP``, etc.) while registering the extra header and section descriptors via
   :class:`FileMeta`.
+
+  The dialect is **this project's** extension of TSPLIB95, inspired by LKH-3 but
+  not a copy of it: LKH-3 "at present only allows one depot" (LKH-3 report
+  §3.1.2), while ``DEPOT_SECTION`` is core TSPLIB and may list any node numbers,
+  so multi-depot problems are legal here. Do not describe an emitted file as an
+  LKH-3 file.
+
+  There is no ``DEPOTS`` header: the depot count is ``len(DEPOT_SECTION)``, so
+  the fact lives in one place.
   """
 
-  allowed_problem_types: frozenset[str] = LKH_PROBLEM_TYPES
+  allowed_problem_types: frozenset[str] = EXTENDED_PROBLEM_TYPES
 
-  # Extended LKH-3 header fields
+  # Extended header fields
   vehicles: int = cast("int", IntegerField("VEHICLES"))
   max_distance: int | float = cast("int | float", NumberField("DISTANCE"))
   service_time: int | float = cast("int | float", NumberField("SERVICE_TIME"))
   capacity_vol: int = cast("int", IntegerField("CAPACITY_VOL"))
   capacity_weight: int = cast("int", IntegerField("CAPACITY_WEIGHT"))
-  num_depots: int = cast("int", IntegerField("DEPOTS"))
   periods: int = cast("int", IntegerField("PERIODS"))
+  salesmen: int = cast("int", IntegerField("SALESMEN"))
+  external_salesmen: int = cast("int", IntegerField("EXTERNAL_SALESMEN"))
+  scale: int = cast("int", IntegerField("SCALE"))
+  risk_threshold: int = cast("int", IntegerField("RISK_THRESHOLD"))
+  grid_size: int | float = cast("int | float", NumberField("GRID_SIZE"))
+  k: int = cast("int", IntegerField("K"))
+  probability: int | float = cast("int | float", NumberField("PROBABILITY"))
 
   # Extended LKH-3 section fields
   time_windows = cast("dict[Any, Any]", IndexedCoordinatesField("TIME_WINDOW_SECTION", dimensions=2))
   service_times = cast("dict[Any, Any]", IndexedCoordinatesField("SERVICE_TIME_SECTION", dimensions=1))
-  backhauls = cast("dict[Any, Any]", DemandsField("BACKHAUL_SECTION"))
+  # LKH-3 §3.1.2: a list of backhaul nodes, one per line, terminated by -1.
+  backhauls = cast("list[int]", DepotsField("BACKHAUL_SECTION"))
   pickup_and_delivery = cast(
     "dict[Any, Any]", IndexedCoordinatesField("PICKUP_AND_DELIVERY_SECTION", dimensions=(3, 5, 6))
   )
   depot_capacities = cast("dict[Any, Any]", DemandsField("DEPOT_CAPACITY_SECTION"))
   depot_durations = cast("dict[Any, Any]", DurationsField("DEPOT_DURATION_SECTION"))
+  # LKH-3 3.0.6 (STTSP): the nodes a Steiner tour must visit, one per line,
+  # terminated by -1 — the same shape as DEPOT_SECTION.
+  required_nodes = cast("list[int]", DepotsField("REQUIRED_NODES_SECTION"))
 
 
 #: Global registry mapping problem type names to their registered problem model classes.
@@ -299,25 +318,31 @@ def register_problem_class(
 def get_problem_class_for_type(problem_type: str | None) -> type[StandardProblem]:
   """Resolve the problem class registered for ``problem_type``.
 
-  Defaults to :class:`StandardProblem` when ``problem_type`` is None or
-  unrecognized in the registry.
+  The declared ``TYPE`` is normalized first (parenthetical qualifier stripped,
+  uppercased, aliases applied), so a file declaring ``TSP (M.~Hofmeister)``,
+  ``VRP`` or ``k-TSP`` reaches its registered class instead of falling back on
+  the spelling. Defaults to :class:`StandardProblem` when the type is None or
+  the normalized token is unregistered.
   """
   if not problem_type:
     return StandardProblem
-  return PROBLEM_REGISTRY.get(problem_type, StandardProblem)
+  canonical: str | None = normalize_problem_type(problem_type)
+  if not canonical:
+    return StandardProblem
+  return PROBLEM_REGISTRY.get(canonical, StandardProblem)
 
 
 # Register base TSPLIB95 core types with StandardProblem
 register_problem_class(StandardProblem, VALID_PROBLEM_TYPES)
 
-# Register extended LKH-3 types with LKHProblem
-register_problem_class(LKHProblem, LKH_PROBLEM_TYPES - VALID_PROBLEM_TYPES)
+# Register extended LKH-3 types with ExtendedProblem
+register_problem_class(ExtendedProblem, EXTENDED_PROBLEM_TYPES - VALID_PROBLEM_TYPES)
 
 
 __all__: list[str] = [
   "PROBLEM_REGISTRY",
+  "ExtendedProblem",
   "FileMeta",
-  "LKHProblem",
   "Problem",
   "StandardProblem",
   "get_problem_class_for_type",

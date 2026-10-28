@@ -27,13 +27,13 @@ dependencies = [
     "duckdb>=1.5.6",
     "pandas>=2.3.3",
     "psutil>=5.9.0",
-    "pytest>=9.1.1",
     "pyyaml>=6.0",
-    "ruff>=0.16.6",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.4.2", "pytest-cov>=4.0.0", "black>=23.0.0", "mypy>=1.5.0"]
+# Mirror of `[dependency-groups].dev` below, kept for `pip install -e ".[dev]"` users.
+# The uv group is canonical (CI runs `uv sync --dev`); change both lists together.
+dev = ["mypy>=2.4.0", "pytest>=9.1.1", "pytest-cov>=4.0.0", "ruff>=0.17.0"]
 
 [project.urls]
 Homepage = "https://github.com/lucasgaldinos/Routing_data"
@@ -59,9 +59,25 @@ strict = true
 
 # duckdb / psutil / pandas ship no py.typed marker (or partial coverage); skip
 # their stubs so real src errors are not drowned under import-untyped noise.
-[[tool.mypy.overrides]]
-module = ["duckdb", "psutil", "pandas"]
-ignore_missing_imports = true
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --strict-markers --tb=short"
+markers = [
+    "unit: Single module under test; derived from the filename prefix",
+    "integration: Two or more modules composed, a CLI runner, or a compositional adapter",
+    "e2e: Full scan -> parse -> transform -> write -> database chain across packages",
+    "performance: Asserts on time or resources",
+    "slow: Measured wall time above 1 second",
+    "requires_dataset: Opens files under datasets_raw/**",
+    "regression: Guards a specific fixed defect named in the docstring",
+    "cli: Drives click.testing.CliRunner",
+    "database: Opens a DuckDB database",
+    "serial: Unsafe under xdist",
+]
 
 [tool.ruff]
 line-length = 120
@@ -92,4 +108,14 @@ indent-style = "space"
 quote-style = "double"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.17.0",
+    "types-psutil>=7.2.2.20260906",
+    "types-pyyaml>=6.0.12.20260906",
+]
 

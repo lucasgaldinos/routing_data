@@ -14,6 +14,29 @@ _Active implementation plan - routing_data parser hardening (tsplib_parser) + ET
 - [ ] Batch 3 - ETL failure visibility (converter / CLI)
 - [ ] Batch 4 - naming collision (`DataTransformer` -> `ProblemNormalizer`)
 - [x] Batch 5 - docs: `src/tsplib_parser/README.md` with mermaid diagrams, updated TODOs, test layout conventions
+- [x] Batch 6 - parser payload typing (`ParseResult` / `ProblemData` / `Metadata`) + Cordeau payload bridge (2026-10-23)
+
+## Verification baseline (re-measured 2026-10-23)
+
+The three gates below are the only accepted evidence that a change is done. Numbers are the
+state at the time of writing; a change may not raise any of them.
+
+```bash
+.venv/bin/python -m ruff check src tests     # All checks passed
+.venv/bin/python -m mypy src                 # 18 errors in 5 files (checked 35 source files)
+.venv/bin/python -m pytest -q                 # 306 passed
+```
+
+- **ruff:** clean across `src` and `tests`.
+- **mypy strict:** 18 errors / 5 files — `utils/parallel.py` (6), `utils/update.py` (7),
+  `output/parquet_writer.py` (3), `cli/commands.py` (1), `config.py` (1 missing-stub note).
+  `tsplib_parser` is at **0**. Detailed rows in the typing register below.
+- **pytest:** 306 passed (248 `unit`, 57 `integration`, 1 `e2e`); includes the 239-file corpus sweep.
+- **Pylance/pyright strict** is a second, stricter lens: it reports the same `parallel.py` items plus
+  6 `tsplib_parser` items that mypy does not (see **T7**). `mypy` is the configured gate because
+  `pyproject.toml` declares it; pyright is advisory until a config is committed.
+- **mypy is installed** in `.venv` as of 2026-10-23 (2.4.0), so the gate can actually run for the
+  first time. It landed in runtime `dependencies` — see **T6**.
 
 ## Decisions pinned
 
@@ -104,7 +127,7 @@ uv run converter process -i datasets_raw/problems -o <tmp>   # corpus run when a
 | ID | Severity | Problem | Type | Where | Cause / Why | Depends on |
 | --- | --- | --- | --- | --- | --- | --- |
 | B1 | Blocker | Rerun on existing DB silently no-ops: duplicate key → batch rollback, stale row kept, exit 0, JSON rewritten anyway → DB/JSON diverge | Data integrity / workflow | `operations.py:292` (`_insert_hub`), UNIQUE `:109`, batch `:434-519`, caller `commands.py:161`, update branch `commands.py:120-135` | Plain `INSERT`, no upsert; constraint error swallowed → rollback; CLI prints success + exit 0 | Root: S3 non-idempotent writes; update path; G6 false-confidence test |
-| B2 | Blocker | All 4 CI gates red: 14 tests fail, 256 ruff, black reformats everything, 16 mypy | Process / verification | `tests/**`, `pyproject.toml:75`, `ci.yml`, `src/**` | v2 schema landed in `src` only, tests still assert v1 `nodes`/`insert_nodes`; black hardcodes 4-space vs project 2-space → gate can never pass; mypy errors unfixed | S1 half-landed migration; m21 dual config/formatter |
+| B2 | Blocker | CI gates: tests and ruff are green since 2026-10-23; **mypy still red (18 errors / 5 files)**; black still conflicts with the project's 2-space/120-col style | Process / verification | `tests/**`, `pyproject.toml:75`, `ci.yml`, `src/**` | v2 schema migration finished in tests; mypy never ran until 2026-10-23 (not installed) so its debt is newly visible; black hardcodes 4-space vs project 2-space → that gate can never pass | m21, T1–T5 |
 | B3 | Blocker | One bad row kills whole batch; payload without `problem_data` vanishes uncounted (returns 0/0) | Failure isolation / data integrity | `operations.py:434-570`, silent skip `:473` | One transaction per batch, no per-row savepoint; skip path logs nothing, counts nothing | Same root as B1; M12 (`TOUR` poisons batch) |
 | M1 | Major | `analyze` crashes on any DB with HCP/SOP; `--type TOUR` guaranteed to fail | Correctness / CLI | `commands.py:313`, `:264`; `operations.py:830-831`, `:281-287` | `None` formatted with `:<15` (NULL `edge_weight_type` emitted as `CAST(NULL AS VARCHAR)`); `TOUR` offered in `Choice` but schema guard raises | M12 taxonomy drift |
 | M2 | Major | JSON output: path traversal via file `NAME`, silent overwrite, thread race, JSON/DB key divergence | Security / data integrity | `json_writer.py:64,122`; `validation.py:70-71`; `commands.py:170-185`; `operations.py:573-583` | `NAME` only checked non-empty → `lucas_galdino` escapes output dir; duplicate `NAME` overwrites; concurrent threads same path; DB disambiguates by stem, JSON doesn't | Validation gap; key-policy split vs DB |
@@ -115,16 +138,16 @@ uv run converter process -i datasets_raw/problems -o <tmp>   # corpus run when a
 | M7 | Major | `is_symmetric` guessed from format names, can be false | Data integrity | `parser.py:727-753` | Only `ATSP` + 4 formats return `False`; asymmetric `FULL_MATRIX` TSP recorded symmetric; `TYPE : ATSP (author)` bypasses string check | — |
 | M8 | Major | CVRP customer-only matrices get fabricated zeroed depot row | Data integrity | `transformer.py:238-262` | Deliberate decision #5; `0.0` is not a distance → garbage depot legs | Accepted compromise, unmarked |
 | M9 | Major | `errors="latin-1"` is not a codec error handler → tour files silently dropped | Silent failure / correctness | `transformer.py:423` | `LookupError: unknown error handler` → broad except → `None` → tour absent | G2 untested path |
-| M10 | Major | `SimpleConverter.to_json(data, "problem.json")` crashes | Correctness / public API | `api.py:65` | `os.makedirs(os.path.dirname(...))` → `makedirs("")` → `FileNotFoundError` | — |
+| M10 | Major | `SimpleConverter.to_json(data, "problem.json")` crashes | Correctness / public API | `api.py:65` | `os.makedirs(os.path.dirname(...))` → `makedirs("")` → `FileNotFoundError` — **fixed 2026-10-26** (guarded `if dirname: os.makedirs(dirname)`) | Closed |
 | M11 | Major | `converter validate` validates nothing | UX / docs | `commands.py:228-258`; `verify_database.py` | Body prints stats; docstring promises schema/integrity checks; command can never fail | Real checks exist but unwired (G8) |
-| M12 | Major | Problem-type taxonomy copied 5+ times, already drifted | Architecture / SSOT | `operations.py:105,200-206,212-218,281-287`; `validation.py:88`; `scanner.py:150-157`; `commands.py:264`; `__init__.py:8-14` | No single enum/registry; `TOUR` accepted by CLI/docs, rejected by schema | Root for B3 (`TOUR`) + M1 |
+| M12 | Major | Problem-type taxonomy copied 5+ times, already drifted | Architecture / SSOT | `operations.py:105,200-206,212-218,281-287`; `validation.py:88`; `scanner.py:150-157`; `commands.py:264`; `__init__.py:8-14` | No single enum/registry; `TOUR` accepted by CLI/docs, rejected by schema | Partially resolved 2026-10-26 (STORABLE_PROBLEM_TYPES in types.py wired to DB CHECK and dispatch) |
 | m1 | Minor | `--batch-size` no-op | CLI / UX | `parallel.py:44`; `commands.py:140` | Stored, never read; scanner batching never triggers | — |
-| m2 | Minor | `--workers 0` crashes | Correctness | `commands.py:138-146` | No validation; `ProcessPoolExecutor(0)` ValueError | — |
+| m2 | Minor | `--workers 0` crashes | Correctness | `commands.py:138-146` | No validation; `ProcessPoolExecutor(0)` ValueError — **fixed 2026-10-26** (validated workers >= 1 via click.BadParameter) | Closed |
 | m3 | Minor | Docstring sells connection pooling / backpressure / memory limit — none enforced | Docs / behavior | `parallel.py:22-31`, `:148-157` | `memory_limit_mb` unused; sequential mode still pays executor indirection | — |
 | m4 | Minor | Dead-API archipelago (~800 lines uncalled) | Maintainability | `cost.py:148`; `transformer.py:339-552,280-333`; `config.py`; `update.py:37,138,223,249`; `parallel.py:240,255`; `parquet_writer.py:131-168`; `conftest.py:76-84` | Written + documented, never wired; stale v1 asserts | S4 feature sprawl |
 | m5 | Minor | Public validator crashes instead of returning errors | Correctness | `validation.py:81` | `.upper()` on `None`/non-str → `AttributeError` | — |
-| m6 | Minor | `if "VRP" in t` substring match | Correctness | `operations.py:285` | `"VRPTSP"`-style types silently land in `cvrp_problems` | M12 |
-| m7 | Minor | `load()` normalizes type, `load_matrix()` doesn't | API inconsistency | `operations.py:637-658` vs `:660-685` | `"VRP"` lookups fail in one path | M12 |
+| m6 | Minor | `if "VRP" in t` substring match | Correctness | `operations.py:285` | `"VRPTSP"`-style types silently land in `cvrp_problems` — **fixed 2026-10-26** (explicit `_TYPE_TO_STORAGE` dict for all 53 storable types) | Closed |
+| m7 | Minor | `load()` normalizes type, `load_matrix()` doesn't | API inconsistency | `operations.py:637-658` vs `:660-685` | `"VRP"` lookups fail in one path — **fixed 2026-10-26** (`load_matrix` now uses `_validate_hub_type`) | Closed |
 | m8 | Minor | `.sol` parse maps depot `0` → node `-1` silently; cost regex misses negatives/scientific notation | Data integrity | `transformer.py:496-529` | `([\d.]+)` pattern; depot mapping undocumented | G2 |
 | m9 | Minor | Two policies for display coords; sparse `node_id`s misalign silently | Data integrity | `transformer.py:148-160` vs `:122-146`; `validation.py` | `_build_display_coords` compresses missing entries; validation checks counts only | — |
 | m10 | Minor | Scanner order = filesystem order; no dedupe; `stat()` races deletion | Reproducibility / workflow | `scanner.py:63,110,138-141` | Unsorted `rglob`; `problem_id` differs per machine | — |
@@ -138,7 +161,7 @@ uv run converter process -i datasets_raw/problems -o <tmp>   # corpus run when a
 | m18 | Minor | `_calculate_checksum` returns `""` on error — indistinguishable from "changed" | Failure point | `update.py:126-131` | Transient read failure → reprocess loop | Feeds B1 |
 | m19 | Minor | `update_file_tracking` reimplements upsert (TOCTOU window) | Workflow / correctness | `operations.py:713-760` vs upsert at `:609` | Check-then-insert duplicates logic | — |
 | m20 | Minor | Unused runtime deps: `pandas` 0 imports, `ruff` as runtime dep, `pyyaml` reachable only via dead config | Dependencies | `pyproject.toml:20-31` | Liability with no consumer | m4, m12 |
-| m21 | Minor | Dual pytest config; black vs ruff-format contradiction | Tooling | `pytest.ini` vs dead `[tool.pytest.ini_options]`; `pyproject.toml:75` | `pytest.ini` wins; two formatters, one infeasible | Root for B2 |
+| m21 | Minor | Black vs ruff-format contradiction; dual pytest config closed 2026-10-27 | Tooling | `[project.optional-dependencies].dev` declares `black`; `[tool.ruff.format]` is the formatter; pytest is now single-sourced in `[tool.pytest.ini_options]` | Two formatters, one infeasible | Root for B2 |
 | m22 | Minor | Whole-corpus results held in memory before single batch insert | Performance / memory | `worker_functions.py:70-90`; `parallel.py:122,181`; `commands.py:151-161` | Matrices pickled + retained; peak ≈ Σ matrix sizes | Interacts with B1/B3 fix |
 | n1 | Nit | Stale "circular imports" rationale | Docs | `tsplib_parser/__init__.py:64-66` | No cycle exists; `parser.py` never imports package `__init__` | — |
 | n2 | Nit | 308-line exceptions module, 44% covered, ~200 lines docstring | Docs | `converter/utils/exceptions.py` | Docstring cosplay for 6 classes | m4 |
@@ -149,7 +172,7 @@ uv run converter process -i datasets_raw/problems -o <tmp>   # corpus run when a
 | S2 | Systemic | Two error philosophies colliding: strict parser vs lenient storage | Root cause | `models.py:831-905` vs `transformer.py`, `commands.py` | Garbage in, success reported | — |
 | S3 | Systemic | Non-idempotent writes vs re-run-centric operations | Root cause | only upsert = `operations.py:609`; rest insert-only | Contradicts `--force`/incremental model | B1, B3 |
 | S4 | Systemic | Feature sprawl ahead of wiring | Root cause | `cost.py`, solution ingestion, backup, progress, config, `special_func` | Dead code that looks alive; docs describe intended behavior | m4, M6, M11 |
-| S5 | Systemic | SSOT violations | Root cause | type ×5, version ×4, pytest config ×2, formatter ×2, DB path ×2 | Drift is already fact, not a risk | M12, m13, m21, B2 |
+| S5 | Systemic | SSOT violations | Root cause | type ×5, version ×4, pytest config ×2 (closed 2026-10-27), formatter ×2, DB path ×2 | Drift is already fact, not a risk | M12, m13, m21, B2 |
 | G1 | Gap | VRP preprocessing entirely untested (UTF-8→latin-1 fallback, section skips, multi-dim demands, `CAPACITY_VOL/WEIGHT`, temp files) | Coverage | `parser.py:233-373` | 0 tests; proven leak M5 | M5 |
 | G2 | Gap | Solution discovery / `.opt.tour` / `.sol` / cost extraction: 0 tests, 0 callers | Coverage | `transformer.py:339-552` | Contains broken latin-1 path | M9, m4, m8 |
 | G3 | Gap | `cost.py` and `config.py` 0% covered | Coverage | `cost.py`, `config.py` | Dead modules | m4, m12 |
@@ -160,3 +183,25 @@ uv run converter process -i datasets_raw/problems -o <tmp>   # corpus run when a
 | G8 | Gap | `in_memory_db` fixture unused + broken; `verify_database.py` not collected; `validate` a stub | Coverage | `tests/conftest.py:76-84`; `verify_database.py`; `commands.py:228` | Open-per-call `:memory:` = fresh empty DB each time | M11 |
 | F1 | Fixed | `FuncT` identity lambda incompatible with `T` (mypy strict) | Type safety | `models.py:131` | `func or (lambda x: x)` returns `str` vs `T`; fixed with `cast("Callable[[str], T]", ...)` + `cast` import | Resolved |
 | F2 | Fixed | `requires-python = ">=3.10"` vs PEP 695 syntax (3.12+ only) | Tooling / metadata | `pyproject.toml:10` (+classifier `:21`); `ci.yml:14`; `README.md:27,63`; `docs/README.md:125`; `docs/guides/USER_GUIDE.md:78`; `docs/reference/CONTRIBUTING.md:535` | Metadata claimed 3.10/3.11 support; file can't parse there; bumped to `>=3.12` + CI matrix/docs ripples | Resolved |
+| F3 | Fixed | Extended VRP/LKH-3 headers stripped even when the problem class registers them, so typed fields never ran | Data integrity / typing | `parser.py:292-302` (guard now at `:41-54`, `:243-249`) | `VEHICLES : 16` became `vehicles='16'` (str), `DEPOTS : 4` produced `num_depots=None` **and** a stray `depots='4'` key; the section branch already had the `not in fields_by_keyword` guard, the header branch did not | Resolved 2026-10-23 — guard added, regression test `test_registered_lkh_headers_keep_typed_values`, corpus sweep neutral (511/1329 parse before and after, identical failure set) |
+| F4 | Fixed | `EdgeDataField.parse_for_problem` returned `Any` from a `list[list[int]]` signature (mypy + pyright flag) | Typing | `fields.py:203-210` | `TransformerField` stores `self.tf: Transformer[Any]`, so the un-narrowed `parse` is `Any`; `build_transformer` guarantees `EdgeDataT` | Resolved 2026-10-23 — documented `cast` on the subclass-only fallback, `isinstance` fast path unchanged |
+| F5 | Fixed | Converter consumers typed against `dict[str, Any]` while the producer emitted `ParseResult` | Typing / contract | `core/transformer.py:12,39,332-345`; `utils/worker_functions.py:66-87`; 10 test modules | Producer signature was `ParseResult`, consumers took `dict[str, Any]`; TC001 (type-only import at runtime) and a `dict[str, Unknown]` return followed | Resolved 2026-10-23 — imports moved into `TYPE_CHECKING`, explicit local annotations |
+| F6 | Fixed | `SimpleConverter.to_json(data, "problem.json")` crashes | Correctness / public API | `api.py:65` | `os.makedirs(os.path.dirname(...))` called on `""` -> `FileNotFoundError`; fixed by guarding `if dirname:` + regression test | Resolved 2026-10-26 |
+| F7 | Fixed | `analyze` crashes on database with NULL `edge_weight_type` (HCP/SOP) | Correctness / CLI | `commands.py:313` | `p.get('edge_weight_type')` is `None` -> `None.__format__` raises `TypeError`; fixed via `p.get('edge_weight_type') or 'N/A'` + regression test | Resolved 2026-10-26 |
+| F8 | Fixed | `to_json_format` drops explicit distance matrix | Correctness / JSON | `transformer.py:187` | Added `edge_weight_matrix` to forwarded keys; un-xfailed `test_json_carries_the_explicit_matrix` | Resolved 2026-10-26 |
+| F9 | Fixed | JSON writer path traversal via `name`/`type` | Security / JSON | `json_writer.py:60,119` | Sanitized with `Path(str(...)).name.strip()` + regression test `test_write_problem_prevents_path_traversal` | Resolved 2026-10-26 |
+| F10 | Fixed | `--workers 0` crashes with `ValueError` | CLI / validation | `commands.py:72` | Added `if workers <= 0: raise click.BadParameter` + regression test `test_process_with_zero_workers_fails` | Resolved 2026-10-26 |
+
+### Typing register (opened 2026-10-23)
+
+_First full `mypy src` run. Every row is reproduced by the command, not inferred._
+
+| ID | Severity | Problem | Where | Cause | Blocked on |
+| --- | --- | --- | --- | --- | --- |
+| T1 | Major | One module accounts for a third of the mypy debt and most of the editor noise | `utils/parallel.py:51,59,89,158,178,242` | Bare `Callable`, untyped `Queue()`, `_start_time` inferred `None`, and a `dict[str, Any]` producer contract that leaks `Unknown` through `Future`/`as_completed` (6 errors under mypy; 7 in the workspace Pylance pass, 17 when the file is analyzed alone) | Worker-result contract (design decision pending) |
+| T2 | Major | 7 mypy errors: untyped module cache plus `object` arithmetic | `utils/update.py:37,205,207,209,213,214,218` | `_change_cache` has no annotation → values are `object`, so `+ int` and `.append` fail | — |
+| T3 | Major | 3 mypy errors: `Path`/`str` mix-up and indexing a possibly-`None` tuple | `output/parquet_writer.py:73,74,224` | Same parameter reassigned from `str` to `Path`; `fetchone()` result indexed without a guard | — |
+| T4 | Minor | 1 mypy error: indexing a possibly-`None` tuple | `cli/commands.py:552` | `fetchone()` result indexed without a guard | — |
+| T5 | Minor | 1 missing-stub note | `converter/config.py:7` | `pyyaml` ships no `py.typed`; needs `types-PyYAML` (dev) or a targeted override | — |
+| T6 | Fixed | `mypy`, `pytest`, `ruff` were runtime dependencies | `pyproject.toml` `dependencies` | `uv add` defaults to the main group; the `dev` extra already listed older pins | Resolved 2026-10-23: `uv add --dev` + `uv remove`; runtime deps are now `click, duckdb, pandas, psutil, pyyaml`; the pip-facing `dev` extra is documented as a mirror of `[dependency-groups].dev`! |
+| T7 | Minor | 6 pyright-strict-only items in `tsplib_parser` (mypy is clean there) | `models.py:203,217`; `parser.py:542`; `transformers.py:93` (×2); `types.py:132` | Private descriptor access, an unnecessary `isinstance`, and lambda inference | Decision: commit a pyrightconfig and treat it as a second gate |

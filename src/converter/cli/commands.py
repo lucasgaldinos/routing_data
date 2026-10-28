@@ -68,6 +68,9 @@ def process(
   logger = ctx.obj["logger"]
 
   try:
+    if workers <= 0:
+      raise click.BadParameter("workers must be at least 1", param_hint="--workers")
+
     logger.info("Starting TSPLIB file processing")
     logger.info(f"Input directory: {input}")
     logger.info(f"Output directory: {output}")
@@ -310,7 +313,8 @@ def analyze(ctx: click.Context, database: str, type: str | None, format: str, li
         click.echo(f"{'Name':<20} {'Type':<6} {'Dim':>5} {'Weight Type':<15}")
         click.echo("-" * 60)
         for p in problems:
-          click.echo(f"{p['name']:<20} {p['type']:<6} {p['dimension']:>5} {p.get('edge_weight_type', 'N/A'):<15}")
+          ewt = p.get("edge_weight_type") or "N/A"
+          click.echo(f"{p['name']:<20} {p['type']:<6} {p['dimension']:>5} {ewt:<15}")
 
   except Exception as e:
     logger.error(f"Analysis failed: {e}", exc_info=True)

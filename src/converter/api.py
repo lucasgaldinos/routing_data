@@ -62,7 +62,9 @@ class SimpleConverter:
         output_path: Path for output JSON file
     """
     # Create output directory if needed
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    dirname = os.path.dirname(output_path)
+    if dirname:
+      os.makedirs(dirname, exist_ok=True)
 
     # Convert to JSON-friendly format
     json_data: dict[str, Any] = self.transformer.to_json_format(data)

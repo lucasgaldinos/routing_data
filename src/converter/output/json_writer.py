@@ -54,8 +54,10 @@ class JSONWriter:
     """
     # Extract problem metadata
     problem_data = data.get("problem_data", {})
-    problem_name = problem_data.get("name", "unknown")
-    problem_type = problem_data.get("type", "unknown")
+    raw_name = problem_data.get("name", "unknown")
+    raw_type = problem_data.get("type", "unknown")
+    problem_name = Path(str(raw_name)).name.strip() or "unknown"
+    problem_type = Path(str(raw_type)).name.strip() or "unknown"
 
     # Determine output path
     if organize_by_type:
@@ -117,10 +119,12 @@ class JSONWriter:
     Returns:
         Expected output path as string
     """
-    if organize_by_type and problem_type:
-      type_dir = self.output_dir / problem_type.lower()
-      output_path = type_dir / f"{problem_name}.json"
+    safe_name = Path(str(problem_name)).name.strip() or "unknown"
+    safe_type = Path(str(problem_type)).name.strip() or "unknown" if problem_type else None
+    if organize_by_type and safe_type:
+      type_dir = self.output_dir / safe_type.lower()
+      output_path = type_dir / f"{safe_name}.json"
     else:
-      output_path = self.output_dir / f"{problem_name}.json"
+      output_path = self.output_dir / f"{safe_name}.json"
 
     return str(output_path)

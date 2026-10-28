@@ -123,6 +123,24 @@ class TestProcessCommand:
     assert result.exit_code == 0, f"Command failed: {result.output}"
     assert "Processing complete" in result.output
 
+  @pytest.mark.cli
+  def test_process_with_zero_workers_fails(
+    self, cli_runner: CliRunner, tmp_path: Path
+  ) -> None:
+    """WHAT: Test process command with --workers 0 (regression for m2).
+
+    WHY: ProcessPoolExecutor(0) raises ValueError; should fail fast with exit code 1 or 2.
+    EXPECTED: Exit non-zero, error message mentions workers.
+    """
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    out_dir = tmp_path / "out"
+    result = cli_runner.invoke(
+      cli, ["process", "--input", str(in_dir), "--output", str(out_dir), "--workers", "0"]
+    )
+    assert result.exit_code != 0
+    assert "workers" in result.output.lower()
+
   @pytest.mark.requires_dataset
   @pytest.mark.database
   @pytest.mark.cli
@@ -255,6 +273,31 @@ class TestAnalyzeCommand:
       # If JSON parsing fails, just check that output contains expected keys
       assert "statistics" in result.output
       assert "problems" in result.output
+
+  @pytest.mark.requires_dataset
+  @pytest.mark.database
+  @pytest.mark.cli
+  def test_analyze_handles_null_edge_weight_type(
+    self, cli_runner: CliRunner, datasets_raw_dir: Path, tmp_path: Path
+  ) -> None:
+    """WHAT: Test analyze table format on problems without edge_weight_type (regression for M1).
+
+    WHY: HCP and SOP problems have edge_weight_type=NULL, which caused None.__format__ to crash.
+    EXPECTED: Exit code 0, displays 'N/A' for edge weight type.
+    """
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    hcp_file = datasets_raw_dir / "problems" / "hcp" / "alb1000.hcp"
+    import shutil
+    shutil.copy(hcp_file, input_dir / "alb1000.hcp")
+
+    out_dir = tmp_path / "out"
+    cli_runner.invoke(cli, ["process", "-i", str(input_dir), "-o", str(out_dir), "--no-parallel"])
+    db_path = out_dir / "db" / "routing.duckdb"
+    result = cli_runner.invoke(cli, ["analyze", "-d", str(db_path), "--format", "table"])
+    assert result.exit_code == 0, f"Analyze failed: {result.output}"
+    assert "alb1000" in result.output
+    assert "N/A" in result.output
 
   @pytest.mark.requires_dataset
   @pytest.mark.database

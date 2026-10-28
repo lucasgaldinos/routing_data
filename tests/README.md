@@ -24,6 +24,27 @@ modifications:
       - description: >
           Updated counts following PP6 Cordeau integration: 300 tests total,
           136 requires_dataset tests (added CordeauProblem and lossless LKH-3 tests).
+  - date_modified: 2026-10-24
+    modifications:
+      - description: >
+          Recorded step A2: added test_unit_solutions.py to the tree and its
+          boundary row, refreshed suite and marker counts (353 passed, 6
+          xfailed; 359 collected) and the command map, and documented the
+          vocabulary drift guard that compares converter/types.py with the
+          stored CHECK expressions.
+      - description: >
+          Recorded step A3: extended test_unit_solutions.py with the linking
+          coverage (discovery from a problem path, stem-based linking, ambiguity
+          refusal) and refreshed counts to 368 passed / 374 collected.
+  - date_modified: 2026-10-26
+    modifications:
+      - description: >
+          Added regressions for M10 (test_to_json_bare_filename_without_dir),
+          M1 (test_analyze_handles_null_edge_weight_type), M2 (test_write_problem_prevents_path_traversal),
+          and m2 (test_process_with_zero_workers_fails). Un-xfailed test_json_carries_the_explicit_matrix (F8/CV9 item 4).
+          Resolved Objective 4 Gap 1: expanded DuckDB problems.type CHECK constraint to admit all 53 STORABLE_PROBLEM_TYPES,
+          preserving hub problem identity while routing physical storage via _TYPE_TO_STORAGE; un-xfailed test_extended_type_keeps_its_identity.
+          Refreshed test count: 406 collected (402 passed, 4 xfailed).
 related_files:
   - [conftest.py](./conftest.py)
   - [testing_instructions.instructions.md](../.github/instructions/testing_instructions.instructions.md)
@@ -70,23 +91,38 @@ tests/
 └── converter/
     ├── test_unit_scanner.py
     ├── test_unit_transformer.py
+    ├── test_unit_solutions.py
     ├── test_unit_cost.py
     ├── test_unit_database.py
     ├── test_unit_json_writer.py
     ├── test_integration_api.py
     ├── test_integration_cli_commands.py
     ├── test_integration_cli_inspect.py
-    └── test_integration_pipeline.py
+    ├── test_integration_pipeline.py
+    ├── test_integration_schema_contract.py
+    ├── test_integration_type_coverage.py
+    ├── test_integration_output_contract.py
+    └── test_integration_batch_accounting.py
 ```
 
 `tests/test_unit_conftest.py` is the documented infrastructure exception: it
 tests the root `conftest.py` (the marker hook and its mapping), which belongs to
 no source package.
 
-Current state (2026-10-21): Batches 1–4 of the reorganization are done
+Current state (2026-10-24): Batches 1–4 of the reorganization are done
 (structure, fixtures/quality, annotations, marker hook and tags). Batch 5
-(coverage gaps) is pending. Suite: **306 passed, 0 failed, 0 skipped**, ~23 s;
-`ruff check tests` clean. Levels: 248 `unit`, 57 `integration`, 1 `e2e`.
+(coverage gaps) is pending. Suite: **368 passed, 6 xfailed, 0 failed, 0 skipped**, ~25 s;
+`ruff check tests` clean. Levels: 276 `unit`, 97 `integration`, 1 `e2e`.
+
+The solution-parser tests (`test_unit_solutions.py`, 13 tests) that arrived with
+step A2 are the first ones written against the new `converter/core/solutions.py`
+layer; the old `DataTransformer` solution methods they will replace are still
+covered by `test_unit_transformer.py` until the deletion in A4.
+
+The 6 `xfailed` tests are deliberate: they pin a defect that is registered in
+`TODO.md` / `src/converter/TODO.md` and marked `strict=True`, so the day the
+defect is fixed the suite turns **red** until the test is updated. They are the
+red-to-green targets for the converter rework (register items B1, B3, M12, CV9).
 The rationale for every rule below is in
 `tmp/analysis-test-suite-organization.md`.
 
@@ -134,10 +170,10 @@ true:
 | Marker | Apply when | Applied to |
 | ------ | ---------- | ---------- |
 | `slow` | Measured wall time > 1 s | 2 tests |
-| `requires_dataset` | The test opens files under `datasets_raw/**`, directly or through a fixture | 136 tests |
+| `requires_dataset` | The test opens files under `datasets_raw/**`, directly or through a fixture | 162 tests |
 | `regression` | The test guards a specific fixed defect named in the docstring | 9 tests: Issues #3/#4 and #6 |
 | `cli` | The test drives `click.testing.CliRunner` | 21 tests |
-| `database` | The test opens a DuckDB database | 45 tests |
+| `database` | The test opens a DuckDB database | 85 tests |
 | `performance` | The test asserts on time or resources | Registered, unused |
 | `serial` | The test is unsafe under xdist | Registered, unused |
 
@@ -172,6 +208,34 @@ check (6.83 s). Re-measure after any change to corpus-wide tests.
 A new parser test goes into exactly one file. If it fits two, it is probably two
 tests.
 
+### Converter characterization suite (added 2026-10-23)
+
+These four files pin the write path before the converter rework touches it. They
+are the contract every later change must keep or consciously amend.
+
+| File | Owns |
+| ---- | ---- |
+| `test_integration_schema_contract.py` | The schema as a published artifact: all nine tables, column order, column types, nullability, the `problems.type` CHECK (admits 5, refuses `TOUR`/extended LKH-3), `UNIQUE (name, type)`, and the `solutions` constraints (`kind` and `quality` domains, `routes NOT NULL`, unique `source_file`, orphan rows allowed) |
+| `test_integration_type_coverage.py` | One real corpus file per admitted type through worker → batch insert → read-back (type, dimension, payload); the declared-but-refused types as explicit known gaps |
+| `test_integration_output_contract.py` | JSON document key set and values; parquet equals one file per table (nine, including `solutions`) with row counts matching the tables; JSON ↔ DB identity parity |
+| `test_integration_batch_accounting.py` | Inputs equal inserted + failed + skipped; a refused sibling must not remove stored problems; an empty payload must be counted, not skipped |
+
+### Solution parsing (added 2026-10-24, step A2)
+
+| File | Owns |
+| ---- | ---- |
+| `test_unit_solutions.py` | `converter.core.solutions`: `parse_solution_file` for both shipped formats — `*.opt.tour` (single cycle, cost from the `COMMENT` parenthesis, `-1` terminator, missing/empty `TOUR_SECTION`) and `*.sol` (`Route #k : ...` with wrapped lines, `Cost` line incl. sign and exponent, file with no routes), unknown suffix, zero-based node ids rejected, non-UTF-8 bytes read as latin-1 — plus two corpus sweeps (82 tours, 390 `.sol`) asserting contiguity; and linking: `candidate_solution_files` (sibling `.sol`, `tour/` cousin, no tour for a route instance, both when both exist, none when none exists, corpus coverage 390/390 and 82/82) and `link_solution` (single match, `no_instance`, `ambiguous` with both ids, case-insensitive stem) |
+
+The vocabulary in `converter/types.py` is checked against the database by
+`test_solution_vocabularies_match_the_database` (in the schema contract file):
+it reads `duckdb_constraints().expression` and compares the admitted literals with
+`SOLUTION_KINDS` / `SOLUTION_QUALITIES`, so a value added on one side only fails.
+
+An `xfail(strict=True)` in these files is a **registered defect**, not a tolerated
+failure: the reason string names the register ID (`B1`, `B3`, `M12`, `CV9`), and
+fixing the defect makes the suite fail until the test is rewritten to assert the
+new behaviour.
+
 ## Changing a test
 
 Checklist for any add, move, rename, or rewrite:
@@ -194,13 +258,13 @@ Checklist for any add, move, rename, or rewrite:
 ## Command map
 
 ```bash
-# Everything (288 tests)
+# Everything (374 tests)
 .venv/bin/python -m pytest -q
 
-# Fast gate: no slow tests, no corpus dependency (156 tests, ~2 s)
+# Fast gate: no slow tests, no corpus dependency (212 tests, ~2 s)
 .venv/bin/python -m pytest -m "not slow and not requires_dataset" -q
 
-# Only tests that need datasets_raw/** (132 tests)
+# Only tests that need datasets_raw/** (162 tests)
 .venv/bin/python -m pytest -m requires_dataset -q
 
 # Only the cross-package chain (1 test)
@@ -222,6 +286,5 @@ Checklist for any add, move, rename, or rewrite:
 .venv/bin/python -m pytest --collect-only -q
 ```
 
-pytest is installed only in `.venv`. `pytest.ini` is the only pytest
-configuration; `[tool.pytest.ini_options]` was removed from `pyproject.toml` in
-the 2026-10-20 sweep. Do not add a second configuration.
+pytest is installed only in `.venv`. `[tool.pytest.ini_options]` in
+`pyproject.toml` is the only pytest configuration.

@@ -33,13 +33,14 @@ from tsplib_parser.exceptions import ParseError, ValidationError
 from tsplib_parser.fields import IntegerField, StringField
 from tsplib_parser.matrix import Matrix
 from tsplib_parser.models import (
-  LKHProblem,
+  ExtendedProblem,
   StandardProblem,
   get_problem_class_for_type,
   register_problem_class,
 )
 from tsplib_parser.parser import FormatParser
 from tsplib_parser.types import (
+  EXTENDED_PROBLEM_TYPES,
   THREED_WEIGHT_TYPES,
   TWOD_WEIGHT_TYPES,
   normalize_problem_type,
@@ -458,7 +459,7 @@ class TestPreAndPostExtractionValidationRules:
     EXPECTED: Extended fields are parsed and surfaced in `result["problem_data"]`.
     """
 
-    class CustomLKHProblem(StandardProblem):
+    class CustomExtendedProblem(StandardProblem):
       vehicles = IntegerField("VEHICLES")
       mtsp_objective = StringField("MTSP_OBJECTIVE")
 
@@ -476,21 +477,21 @@ class TestPreAndPostExtractionValidationRules:
       "EOF\n"
     )
     path = _write(tmp_path, "custom_lkh.tsp", content)
-    result = FormatParser(problem_class=CustomLKHProblem).parse_file(path)
+    result = FormatParser(problem_class=CustomExtendedProblem).parse_file(path)
 
     assert result["problem_data"]["vehicles"] == 2
     assert result["problem_data"]["mtsp_objective"] == "MINMAX"
     assert result["coords"] == [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
 
   def test_lkh_problem_parses_and_validates_extended_type_and_sections(self, tmp_path: Path) -> None:
-    """WHAT: Parse a `TYPE: CVRPTW` problem with `TIME_WINDOW_SECTION` using `LKHProblem`.
+    """WHAT: Parse a `TYPE: CVRPTW` problem with `TIME_WINDOW_SECTION` using `ExtendedProblem`.
 
     WHY: Verifies P6, R1, R2, and R6 — `StandardProblem` rejects `CVRPTW`, whereas
-    `LKHProblem` accepts LKH-3 types, parses `TIME_WINDOW_SECTION` natively (without
+    `ExtendedProblem` accepts LKH-3 types, parses `TIME_WINDOW_SECTION` natively (without
     stripping it), and validates `TIME_WINDOW_SECTION` against `field.dimensions == 2`.
 
     EXPECTED: `StandardProblem` raises `ValidationError` on `TYPE: CVRPTW`;
-    `LKHProblem` succeeds and extracts 0-based `time_windows`; a 3-column row in
+    `ExtendedProblem` succeeds and extracts 0-based `time_windows`; a 3-column row in
     `TIME_WINDOW_SECTION` fails `R1`/`R2` field-dimension validation.
     """
     cvrptw_content = (
@@ -524,15 +525,15 @@ class TestPreAndPostExtractionValidationRules:
     with pytest.raises(ValidationError, match="Unknown problem type: CVRPTW"):
       FormatParser(problem_class=StandardProblem).parse_file(path)
 
-    # LKHProblem accepts CVRPTW and natively parses TIME_WINDOW_SECTION
-    result = FormatParser(problem_class=LKHProblem).parse_file(path)
+    # ExtendedProblem accepts CVRPTW and natively parses TIME_WINDOW_SECTION
+    result = FormatParser(problem_class=ExtendedProblem).parse_file(path)
     assert result["problem_data"]["type"] == "CVRPTW"
     assert result["problem_data"]["vehicles"] == 2
     assert result["problem_data"]["service_time"] == 5.5
     assert "stripped_sections" not in result["problem_data"]
     assert result["problem_data"]["time_windows"] == [[0.0, 100.0], [10.0, 50.0], [20.0, 80.0]]
 
-    # FormatParser() auto-dispatches to LKHProblem when problem_class is omitted
+    # FormatParser() auto-dispatches to ExtendedProblem when problem_class is omitted
     auto_result = FormatParser().parse_file(path)
     assert auto_result["problem_data"]["type"] == "CVRPTW"
     assert auto_result["problem_data"]["time_windows"] == [[0.0, 100.0], [10.0, 50.0], [20.0, 80.0]]
@@ -541,7 +542,7 @@ class TestPreAndPostExtractionValidationRules:
     bad_tw_content = cvrptw_content.replace("2 10 50\n", "2 10 50 99\n")
     bad_path = _write(tmp_path, "bad_cvrptw.vrp", bad_tw_content)
     with pytest.raises(ValidationError, match=r"TIME_WINDOW_SECTION must have dimensions \[2\]"):
-      FormatParser(problem_class=LKHProblem).parse_file(bad_path)
+      FormatParser(problem_class=ExtendedProblem).parse_file(bad_path)
 
   def test_problem_class_registry_auto_dispatch(self) -> None:
     """WHAT: Test get_problem_class_for_type and register_problem_class.
@@ -550,8 +551,8 @@ class TestPreAndPostExtractionValidationRules:
     """
     assert get_problem_class_for_type("TSP") is StandardProblem
     assert get_problem_class_for_type("CVRP") is StandardProblem
-    assert get_problem_class_for_type("CVRPTW") is LKHProblem
-    assert get_problem_class_for_type("TSPTW") is LKHProblem
+    assert get_problem_class_for_type("CVRPTW") is ExtendedProblem
+    assert get_problem_class_for_type("TSPTW") is ExtendedProblem
     assert get_problem_class_for_type(None) is StandardProblem
     assert get_problem_class_for_type("UNKNOWN_TYPE") is StandardProblem
 
@@ -561,5 +562,139 @@ class TestPreAndPostExtractionValidationRules:
 
     register_problem_class(CustomProblem)
     assert get_problem_class_for_type("CUSTOM_VRP") is CustomProblem
+
+  def test_declared_type_is_normalized_before_dispatch(self) -> None:
+    """WHAT: Every declared ``TYPE`` reaches its registered class.
+
+    WHY: Dispatch used to look up the raw header value, so ``mTSP`` missed the
+    registered ``MTSP`` and ``k-TSP`` was absent from the vocabulary; both fell
+    back to ``StandardProblem`` and their extension sections were stripped.
+    """
+    # LKH-3 spellings that are not already canonical uppercase tokens.
+    assert get_problem_class_for_type("mTSP") is ExtendedProblem
+    assert get_problem_class_for_type("k-TSP") is ExtendedProblem
+    assert get_problem_class_for_type("O-k-TSP") is ExtendedProblem
+    assert get_problem_class_for_type("SoftCluVRP") is ExtendedProblem
+    assert get_problem_class_for_type("TSP_mD") is ExtendedProblem
+    # A parenthetical qualifier still resolves to the core class.
+    assert get_problem_class_for_type("TSP (M.~Hofmeister)") is StandardProblem
+    # The vocabulary holds no token that no source defines.
+    assert "TRP" in EXTENDED_PROBLEM_TYPES
+    assert "TRPP" not in EXTENDED_PROBLEM_TYPES
+
+  def test_backhaul_section_is_a_node_list(self, tmp_path: Path) -> None:
+    """WHAT: ``BACKHAUL_SECTION`` parses one node per line, terminated by ``-1``.
+
+    WHY: LKH-3 §3.1.2 defines it as a list of backhaul nodes. It was registered
+    as ``DemandsField`` (two integers per line), so a conforming file failed to
+    parse and the section could only be read in a shape no source produces.
+    """
+    content = (
+      "NAME : backhaul\n"
+      "TYPE : VRPB\n"
+      "DIMENSION : 4\n"
+      "EDGE_WEIGHT_TYPE : EUC_2D\n"
+      "NODE_COORD_SECTION\n"
+      "1 0 0\n2 10 0\n3 0 10\n4 10 10\n"
+      "DEMAND_SECTION\n"
+      "1 0\n2 3\n3 4\n4 5\n"
+      "DEPOT_SECTION\n"
+      "1\n-1\n"
+      "BACKHAUL_SECTION\n"
+      "3\n4\n-1\n"
+      "EOF\n"
+    )
+    result = FormatParser().parse_file(_write(tmp_path, "backhaul.vrp", content))
+    assert result["problem_data"]["type"] == "VRPB"
+    assert result["problem_data"]["backhauls"] == [3, 4]
+
+  def test_extended_header_keywords_survive_a_parse(self, tmp_path: Path) -> None:
+    """WHAT: The LKH-3 header keywords are typed fields, not ignored text.
+
+    WHY: They were absent from ``ExtendedProblem.fields_by_name``, so the parser
+    read the header lines, ignored them and returned a result that had lost the
+    fleet size, the scale, the risk threshold and the probability. Accepting a
+    ``TYPE`` without the fields that type uses is not support.
+    """
+    content = (
+      "NAME : salesmen\n"
+      "TYPE : MTSP\n"
+      "DIMENSION : 3\n"
+      "EDGE_WEIGHT_TYPE : EUC_2D\n"
+      "SALESMEN : 2\n"
+      "EXTERNAL_SALESMEN : 1\n"
+      "SCALE : 100\n"
+      "RISK_THRESHOLD : 7\n"
+      "GRID_SIZE : 2.5\n"
+      "K : 3\n"
+      "PROBABILITY : 0.5\n"
+      "NODE_COORD_SECTION\n"
+      "1 0 0\n2 1 0\n3 0 1\n"
+      "EOF\n"
+    )
+    result = FormatParser().parse_file(_write(tmp_path, "salesmen.vrp", content))
+    data = result["problem_data"]
+    assert data["salesmen"] == 2
+    assert data["external_salesmen"] == 1
+    assert data["scale"] == 100
+    assert data["risk_threshold"] == 7
+    assert data["grid_size"] == 2.5
+    assert data["k"] == 3
+    assert data["probability"] == 0.5
+
+  def test_required_nodes_section_survives_a_parse(self, tmp_path: Path) -> None:
+    """WHAT: ``REQUIRED_NODES_SECTION`` is kept (STTSP, LKH-3 3.0.6).
+
+    WHY: STTSP was in the vocabulary but the section it needs was not a field, so
+    the required-node set was dropped and a Steiner instance parsed as a plain
+    tour over every node.
+    """
+    content = (
+      "NAME : steiner\n"
+      "TYPE : STTSP\n"
+      "DIMENSION : 4\n"
+      "EDGE_WEIGHT_TYPE : EUC_2D\n"
+      "NODE_COORD_SECTION\n"
+      "1 0 0\n2 1 0\n3 0 1\n4 1 1\n"
+      "REQUIRED_NODES_SECTION\n"
+      "2\n3\n-1\n"
+      "EOF\n"
+    )
+    result = FormatParser().parse_file(_write(tmp_path, "steiner.vrp", content))
+    assert result["problem_data"]["required_nodes"] == [2, 3]
+
+  def test_coloured_tsp_types_are_refused(self, tmp_path: Path) -> None:
+    """WHAT: A `TYPE` whose required section has no published grammar is refused.
+
+    WHY: the LKH-3 reference names ``CTSP_SET_SECTION`` without giving its line
+    grammar, so the colouring cannot be read. Accepting ``CTSP`` would parse the
+    geometry and drop the colour sets — a different problem. Both paths fail, and
+    the failure says which artefact is missing.
+    """
+    with_section = (
+      "NAME : colour\n"
+      "TYPE : CTSP\n"
+      "DIMENSION : 3\n"
+      "EDGE_WEIGHT_TYPE : EUC_2D\n"
+      "NODE_COORD_SECTION\n1 0 0\n2 1 0\n3 0 1\n"
+      "CTSP_SET_SECTION\n1 2\n3\n-1\n"
+      "EOF\n"
+    )
+    with pytest.raises(ParseError, match="unsupported CTSP_SET_SECTION"):
+      FormatParser().parse_file(_write(tmp_path, "colour_with_set.vrp", with_section))
+
+    without_section = (
+      "NAME : colour\n"
+      "TYPE : CTSP\n"
+      "DIMENSION : 3\n"
+      "EDGE_WEIGHT_TYPE : EUC_2D\n"
+      "NODE_COORD_SECTION\n1 0 0\n2 1 0\n3 0 1\n"
+      "EOF\n"
+    )
+    with pytest.raises(ValidationError, match="Unknown problem type: CTSP"):
+      FormatParser().parse_file(_write(tmp_path, "colour_bare.vrp", without_section))
+
+    for token in ("CTSP", "CTSP-D", "GCTSP", "CCCTSP", "MSCTSP", "PCTSP", "CBTSP", "CBNTSP"):
+      assert token not in EXTENDED_PROBLEM_TYPES
 
 

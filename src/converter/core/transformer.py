@@ -184,7 +184,7 @@ class DataTransformer:
       "metadata": data.get("metadata", {}),
     }
 
-    for key in ("coords", "display_coords", "demands", "depots", "edges", "fixed_edges"):
+    for key in ("coords", "display_coords", "demands", "depots", "edges", "fixed_edges", "edge_weight_matrix"):
       if key in data:
         json_data[key] = data[key]
 

@@ -42,15 +42,16 @@ __all__: list[str] = [
   "DISPLAY_DATA_TYPES",
   "EDGE_DATA_FORMATS",
   "EDGE_WEIGHT_TYPES",
+  "EXTENDED_PROBLEM_TYPES",
   "EXTENSION_TYPE_HINTS",
   "FUNCTIONAL_EDGE_WEIGHT_FORMATS",
-  "LKH_PROBLEM_TYPES",
   "MATRIX_EDGE_WEIGHT_FORMATS",
   "NODE_COORD_DIMENSIONS",
   "NODE_COORD_TYPES",
   "NO_DIAG_FORMAT_FALLBACK",
   "PROBLEM_TYPE_ALIASES",
   "SECTION_GRAMMARS",
+  "STORABLE_PROBLEM_TYPES",
   "THREED_WEIGHT_TYPES",
   "TWOD_WEIGHT_TYPES",
   "VALID_PROBLEM_TYPES",
@@ -94,31 +95,79 @@ VALID_PROBLEM_TYPES: frozenset[str] = frozenset(
   {problem_type.value for problem_type in ProblemType} | set(PROBLEM_TYPE_ALIASES)
 )
 
-#: Extended LKH-3 problem ``TYPE`` vocabulary (superset of core TSPLIB95 types).
-LKH_PROBLEM_TYPES: frozenset[str] = VALID_PROBLEM_TYPES | frozenset(
+#: Extended problem ``TYPE`` vocabulary: the core TSPLIB95 types plus the problem
+#: types the LKH-3 reference defines a *parseable* grammar for, normalized to
+#: uppercase, plus the project-defined multi-depot family.
+#:
+#: Three deliberate departures from the reference's capability list:
+#:
+#: - the multi-depot family (``MDVRP``, ``MDVRPTW``) is ours. The reference
+#:   defines ``MDMTSP`` (multiple depot, multiple travelling salesman) but no
+#:   multi-depot vehicle-routing type, and the Cordeau front end can emit both
+#:   spellings, so refusing them would make this parser unable to read a document
+#:   it produced itself.
+#: - ``TRPP`` is gone because no source defines it; the reference has ``TRP``.
+#: - the coloured-TSP family (``CTSP``, ``CTSP-D``, ``GCTSP``, ``CCCTSP``,
+#:   ``MSCTSP``, ``PCTSP``, ``CBTSP``, ``CBNTSP``) is not accepted, because every
+#:   one of them needs ``CTSP_SET_SECTION`` and the only source we hold names that
+#:   section without publishing its grammar. Accepting the ``TYPE`` would mean
+#:   parsing the file and dropping the colouring, i.e. solving a different
+#:   problem; validation rejects the ``TYPE`` instead.
+EXTENDED_PROBLEM_TYPES: frozenset[str] = VALID_PROBLEM_TYPES | frozenset(
   {
+    "1-PDTSP",
     "ACVRP",
+    "ADCVRP",
+    "BMTSP",
     "BWTSP",
+    "CATSPP",
     "CCVRP",
-    "CTSP",
+    "CLUVRP",
     "CVRPTW",
     "DCVRP",
+    "HPP",
+    "K-TSP",
+    "M-PDTSP",
+    "M1-PDTSP",
+    "MDMTSP",
     "MDVRP",
+    "MDVRPTW",
     "MLP",
+    "MTRP",
+    "MTRPD",
     "MTSP",
+    "O-K-TSP",
+    "OP",
     "OVRP",
+    "PC-TSP",
     "PDPTW",
     "PDTSP",
     "PDTSPF",
     "PDTSPL",
+    "PTP",
+    "PTSP",
     "RCTVRP",
+    "RCTVRPTW",
+    "SOFTCLUVRP",
     "STTSP",
-    "TRPP",
+    "TOP",
+    "TRP",
+    "TSPDL",
+    "TSPPD",
     "TSPTW",
+    "TSP_MD",
     "VRPB",
+    "VRPBTW",
     "VRPMPD",
+    "VRPMPDTW",
+    "VRPSPD",
+    "VRPSPDTW",
   }
 )
+
+#: Problem types that can be stored in the DuckDB problems hub table.
+#: Excludes TOUR because solution files are not problem instances.
+STORABLE_PROBLEM_TYPES: frozenset[str] = frozenset(t for t in EXTENDED_PROBLEM_TYPES if t != "TOUR")
 
 
 def normalize_problem_type(raw_type: str | None) -> str | None:
@@ -126,7 +175,7 @@ def normalize_problem_type(raw_type: str | None) -> str | None:
 
   Extracts the leading token before any parenthetical comment, uppercases it,
   and maps aliases (``VRP`` -> ``CVRP``) via :data:`PROBLEM_TYPE_ALIASES`.
-  If the leading token is not in :data:`LKH_PROBLEM_TYPES`, returns the
+  If the leading token is not in :data:`EXTENDED_PROBLEM_TYPES`, returns the
   stripped raw string so validation can report the offending value verbatim.
   """
   if not raw_type or not isinstance(raw_type, str):
@@ -137,7 +186,7 @@ def normalize_problem_type(raw_type: str | None) -> str | None:
   base_token: str = stripped.split("(")[0].strip().split()[0].upper() if stripped.split("(")[0].strip() else ""
   if base_token in PROBLEM_TYPE_ALIASES:
     return PROBLEM_TYPE_ALIASES[base_token].value
-  if base_token in LKH_PROBLEM_TYPES:
+  if base_token in EXTENDED_PROBLEM_TYPES:
     return base_token
   return stripped
 
@@ -267,14 +316,21 @@ class ProblemData(TypedDict):
   # Explicit weight matrix (``Matrix``) or raw nested list when it cannot be built
   edge_weights: NotRequired[Any]
 
-  # Extended LKH-3 header fields
+  # Extended (TSPLIB-extended, PB18) header fields. There is no depot count here:
+  #: it is ``len(depots)`` of the payload, never a ``DEPOTS`` header.
   vehicles: NotRequired[int]
-  num_depots: NotRequired[int]
   periods: NotRequired[int]
   max_distance: NotRequired[float]
   service_time: NotRequired[float]
   capacity_vol: NotRequired[int]
   capacity_weight: NotRequired[int]
+  salesmen: NotRequired[int]
+  external_salesmen: NotRequired[int]
+  scale: NotRequired[int]
+  risk_threshold: NotRequired[int]
+  grid_size: NotRequired[float]
+  k: NotRequired[int]
+  probability: NotRequired[float]
 
   # Extended LKH-3 sections: 0-based arrays (coordinate rows are lists of floats)
   time_windows: NotRequired[list[list[float]]]
@@ -283,6 +339,7 @@ class ProblemData(TypedDict):
   backhauls: NotRequired[list[int]]
   depot_capacities: NotRequired[list[int]]
   depot_durations: NotRequired[dict[int, float]]
+  required_nodes: NotRequired[list[int]]
 
   # Preprocessed VRP metadata flags
   has_time_windows: NotRequired[bool]
